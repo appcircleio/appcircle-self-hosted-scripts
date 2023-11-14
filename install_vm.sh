@@ -32,6 +32,12 @@ parseArguments() {
       exit 0
     fi
   done
+
+  vmImageName=$1
+  if [[ -z $vmImageName ]]; then
+    vmImageName=$(getTheLatestVmImageName)
+  fi
+  vmImageFile="$vmImageName.tar.gz"
 }
 
 getTheLatestVmImageName() {
@@ -76,12 +82,6 @@ checkMd5Sum() {
 
 main() {
   parseArguments "$@"
-
-  vmImageName=$1
-  if [[ -z $vmImageName ]]; then
-    vmImageName=$(getTheLatestVmImageName)
-  fi
-  vmImageFile="$vmImageName.tar.gz"
   echo "Installing $vmImageName"
   downloadVmImage
   checkMd5Sum
