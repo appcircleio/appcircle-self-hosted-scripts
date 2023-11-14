@@ -19,23 +19,15 @@ downloadVmImage() {
   echo "Downloading the vm file"
   curl -L -O -C - "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$vmImageFile"
   if [[ "$?" != 0 ]]; then
-    retryDownload
-  fi
-}
-
-retryDownload() {
-  if [[ "$retryAttempt" == "$retryMaxLimit" ]]; then
-    echo "Failed to download the VM image. Please check your network"
-    exit 1
-  fi
-
-  sleep $retryInterval
-  curl -L -O -C - "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$vmImageFile"
-
-  if [[ "$?" != 0 ]] && [[ $retryAttempt -lt $retryMaxLimit ]]; then
+    if [[ "$retryAttempt" -gt "$retryMaxLimit" ]]; then
+      retryAttempt=$((retryAttempt - 1))
+      echo "Failed to download the VM image in $retryAttempt attempt. Please check your network"
+      exit 1
+    fi
     echo "Download failed. Re-trying: $retryAttempt"
     retryAttempt=$((retryAttempt + 1))
-    retryDownload
+    sleep $retryInterval
+    downloadVmImage
   fi
 }
 
@@ -45,12 +37,13 @@ extractVmFile() {
 }
 
 checkMd5Sum() {
-  validMd5=$(curl -s -I -L "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$vmImageFile" | grep -i -w "etag" | cut -d '"' -f 2)
+  validMd5=$(curl -fsSL -I "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$vmImageFile" | grep -i -w "etag" | cut -d '"' -f 2)
   echo "Valid: $validMd5"
   downloadedMd5=$(md5 "$vmImageFile" | cut -d' ' -f4)
   echo "Downloaded: $downloadedMd5"
   if [[ "$downloadedMd5" != "$validMd5" ]]; then
     echo "Your downloaded file is curropted. Delete the $vmImageFile and run the script again."
+    exit 1
   fi
   echo "Your downloaded vm file is valid."
 }
