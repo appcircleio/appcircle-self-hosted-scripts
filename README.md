@@ -2,7 +2,7 @@
 
 Appcircle.io self-hosted scripts repository that has helper scripts for installation, upgrade, or runtime.
 
-## Script overviews
+## Script Overviews
 
 ### `install_vm` Script
 
