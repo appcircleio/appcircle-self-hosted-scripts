@@ -2,7 +2,9 @@
 
 Appcircle.io self-hosted scripts repository that has helper scripts for installation, upgrade, or runtime.
 
-## `install_vm.sh` Script
+## Script overviews
+
+### `install_vm` Script
 
 This script was made for downloading, validating and extracting the Appcircle runner VM image tar.gz file in the background.
 
