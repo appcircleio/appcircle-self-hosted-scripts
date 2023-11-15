@@ -59,7 +59,7 @@ downloadVmImage() {
   if [[ "$?" != 0 ]]; then
     if [[ "$retryAttempt" -gt "$retryMaxLimit" ]]; then
       retryAttempt=$((retryAttempt - 1))
-      echo "Failed to download the VM image in $retryAttempt attempt. Please check your network"
+      echo "Failed to download the VM image in $retryAttempt attempt. Please check your network" >&2
       exit 1
     fi
     echo "Download failed. Re-trying: $retryAttempt"
@@ -80,7 +80,7 @@ checkMd5Sum() {
   downloadedMd5=$(md5 "$vmImageFile" | cut -d' ' -f4)
   echo "Downloaded: $downloadedMd5"
   if [[ "$downloadedMd5" != "$validMd5" ]]; then
-    echo "Your downloaded file is curropted. Delete the $vmImageFile and run the script again."
+    echo "Your downloaded file is curropted. Delete the $vmImageFile and run the script again." >&2
     exit 1
   fi
   echo "Your downloaded vm file is valid."
