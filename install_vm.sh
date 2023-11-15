@@ -14,10 +14,10 @@ printVersion() {
 }
 
 printHelp() {
-  printf '%s\n' "Install, validate, extract macOS vm."
-  printf '%s\n' "By default, latest macOS vm image will be installed."
+  printf '%s\n' "Install, validate, extract macOS VM."
+  printf '%s\n' "By default, latest macOS VM image will be installed."
   printf 'Usage: %s [macOS-vm-name] [-h|--help]\n' "$0"
-  printf '\t%s\n' "macOS-vm-name: Specify the macOS vm name optionally."
+  printf '\t%s\n' "macOS-vm-name: Specify the macOS VM name optionally."
   printf '\t%s\n' "-h, --help: Prints help"
 }
 
@@ -54,7 +54,7 @@ getTheLatestVmImageName() {
 }
 
 downloadVmImage() {
-  echo "Downloading the vm file"
+  echo "Downloading the VM file"
   curl -L -O -C - "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$vmImageFile"
   if [[ "$?" != 0 ]]; then
     if [[ "$retryAttempt" -gt "$retryMaxLimit" ]]; then
@@ -70,7 +70,7 @@ downloadVmImage() {
 }
 
 extractVmFile() {
-  echo "Extracting the vm file"
+  echo "Extracting the VM file"
   tar -zxf macOS_230921.tar.gz --directory "$HOME/.tart/vms/macOS_230921"
 }
 
@@ -83,7 +83,7 @@ checkMd5Sum() {
     echo "Your downloaded file is corrupted. Delete the $vmImageFile and run the script again." >&2
     exit 1
   fi
-  echo "Your downloaded vm file is valid."
+  echo "Your downloaded VM file is valid."
 }
 
 main() {
