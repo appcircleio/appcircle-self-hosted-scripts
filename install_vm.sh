@@ -33,9 +33,9 @@ parseArguments() {
     fi
   done
 
-  if [ "$#" -ne 0 ] && [ "$#" -ne 1 ]; then
-    echo "Illegal number of parameters"
-    printHelp
+  if [[ "$#" -ne 0 ]] && [[ "$#" -ne 1 ]]; then
+    echo "Illegal number of parameters" >&2
+    printHelp >&2
     exit 1
   fi
 
