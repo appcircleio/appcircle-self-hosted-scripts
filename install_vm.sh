@@ -80,7 +80,7 @@ checkMd5Sum() {
   downloadedMd5=$(md5 "$vmImageFile" | cut -d' ' -f4)
   echo "Downloaded: $downloadedMd5"
   if [[ "$downloadedMd5" != "$validMd5" ]]; then
-    echo "Your downloaded file is curropted. Delete the $vmImageFile and run the script again." >&2
+    echo "Your downloaded file is corrupted. Delete the $vmImageFile and run the script again." >&2
     exit 1
   fi
   echo "Your downloaded vm file is valid."
