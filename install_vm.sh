@@ -55,7 +55,7 @@ getTheLatestVmImageName() {
 
 downloadVmImage() {
   echo "Downloading the VM file."
-  curl -L -O -C - "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$vmImageFile"
+  curl -f -L -O -C - "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$vmImageFile"
   if [[ "$?" != 0 ]]; then
     if [[ "$retryAttempt" -gt "$retryMaxLimit" ]]; then
       retryAttempt=$((retryAttempt - 1))
