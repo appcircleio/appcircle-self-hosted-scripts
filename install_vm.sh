@@ -18,7 +18,7 @@ printHelp() {
   printf '%s\n' "By default, latest macOS VM image will be installed."
   printf 'Usage: %s [macOS-vm-name] [-h|--help]\n' "$0"
   printf '\t%s\n' "macOS-vm-name: Specify the macOS VM name optionally."
-  printf '\t%s\n' "-h, --help: Prints help"
+  printf '\t%s\n' "-h, --help: Prints help."
 }
 
 parseArguments() {
@@ -34,7 +34,7 @@ parseArguments() {
   done
 
   if [[ "$#" -ne 0 ]] && [[ "$#" -ne 1 ]]; then
-    echo "Illegal number of parameters" >&2
+    echo "Illegal number of parameters." >&2
     printHelp >&2
     exit 1
   fi
@@ -54,15 +54,15 @@ getTheLatestVmImageName() {
 }
 
 downloadVmImage() {
-  echo "Downloading the VM file"
+  echo "Downloading the VM file."
   curl -L -O -C - "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$vmImageFile"
   if [[ "$?" != 0 ]]; then
     if [[ "$retryAttempt" -gt "$retryMaxLimit" ]]; then
       retryAttempt=$((retryAttempt - 1))
-      echo "Failed to download the VM image in $retryAttempt attempt. Please check your network" >&2
+      echo "Failed to download the VM image in $retryAttempt attempt. Please check your network." >&2
       exit 1
     fi
-    echo "Download failed. Re-trying: $retryAttempt"
+    echo "Download failed. Re-trying: $retryAttempt."
     retryAttempt=$((retryAttempt + 1))
     sleep $retryInterval
     downloadVmImage
@@ -70,15 +70,20 @@ downloadVmImage() {
 }
 
 extractVmFile() {
-  echo "Extracting the VM file"
+  echo "Extracting the VM file."
   tar -zxf macOS_230921.tar.gz --directory "$HOME/.tart/vms/macOS_230921"
+  if [[ $? -ne 0 ]]; then
+    echo "Failed to extract the VM file." >&2
+    exit 1
+  fi
+
 }
 
 checkMd5Sum() {
   validMd5=$(curl -fsSL -I "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$vmImageFile" | grep -i -w "etag" | cut -d '"' -f 2)
-  echo "Valid: $validMd5"
+  echo "Valid MD5: $validMd5"
   downloadedMd5=$(md5 "$vmImageFile" | cut -d' ' -f4)
-  echo "Downloaded: $downloadedMd5"
+  echo "Downloaded File's MD5: $downloadedMd5"
   if [[ "$downloadedMd5" != "$validMd5" ]]; then
     echo "Your downloaded file is corrupted. Delete the $vmImageFile and run the script again." >&2
     exit 1
