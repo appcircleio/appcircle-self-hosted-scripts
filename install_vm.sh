@@ -33,6 +33,12 @@ parseArguments() {
     fi
   done
 
+  if [ "$#" -ne 0 ] && [ "$#" -ne 1 ]; then
+    echo "Illegal number of parameters"
+    printHelp
+    exit 1
+  fi
+
   vmImageName=$1
   if [[ -z $vmImageName ]]; then
     vmImageName=$(getTheLatestVmImageName)
