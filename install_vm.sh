@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -o pipefail
 retryAttempt=1
-retryInterval=3
-retryMaxLimit=3
+retryInterval=30
+retryMaxLimit=10
 version=v1.0.0
 
 mkVmDir() {
