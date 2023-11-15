@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -o pipefail
 retryAttempt=1
-retryInterval=30
-retryMaxLimit=10
+retryInterval=3
+retryMaxLimit=3
 version=v1.0.0
 
 mkVmDir() {
@@ -82,7 +82,18 @@ extractVmFile() {
 checkMd5Sum() {
   validMd5=$(curl -fsSL -I "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$vmImageFile" | grep -i -w "etag" | cut -d '"' -f 2)
   echo "Valid MD5: $validMd5"
-  downloadedMd5=$(md5 "$vmImageFile" | cut -d' ' -f4)
+  md5Cli=""
+  os=$(uname -s)
+  if [[ $os == "Darwin" ]]; then
+    md5Cli="md5"
+  elif [[ $os == "Linux" ]]; then
+    md5Cli="md5sum"
+  fi
+  if ! command -v $md5Cli &>/dev/null; then
+    echo "$md5Cli command not found." >&2
+    exit 1
+  fi
+  downloadedMd5=$($md5Cli "$vmImageFile" | cut -d' ' -f4)
   echo "Downloaded File's MD5: $downloadedMd5"
   if [[ "$downloadedMd5" != "$validMd5" ]]; then
     echo "Your downloaded file is corrupted. Delete the $vmImageFile and run the script again." >&2
@@ -94,7 +105,7 @@ checkMd5Sum() {
 main() {
   parseArguments "$@"
   echo "Installing $vmImageName"
-  downloadVmImage
+  #downloadVmImage
   checkMd5Sum
   mkVmDir
   extractVmFile
