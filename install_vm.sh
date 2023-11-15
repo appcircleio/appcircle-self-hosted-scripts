@@ -109,7 +109,7 @@ checkMd5Sum() {
 main() {
   parseArguments "$@"
   echo "Installing $vmImageName"
-  #downloadVmImage
+  downloadVmImage
   checkMd5Sum
   mkVmDir
   extractVmFile
