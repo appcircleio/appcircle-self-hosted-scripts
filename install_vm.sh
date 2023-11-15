@@ -81,6 +81,10 @@ extractVmFile() {
 
 checkMd5Sum() {
   validMd5=$(curl -fsSL -I "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$vmImageFile" | grep -i -w "etag" | cut -d '"' -f 2)
+  if [[ $? -ne 0 ]]; then
+    echo "Failed to get the md5 hash of origin file. Please check your network." >&2
+    exit 1
+  fi
   echo "Valid MD5: $validMd5"
   md5Cli=""
   os=$(uname -s)
