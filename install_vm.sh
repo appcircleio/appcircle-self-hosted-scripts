@@ -98,6 +98,9 @@ main() {
   checkMd5Sum
   mkVmDir
   extractVmFile
+  echo "The Appcircle Runner macOS VM has been installed successfully."
+  echo "You can see the $vmImageName in the output of 'tart list' command."
+  exit 0
 }
 
 main "$@"
