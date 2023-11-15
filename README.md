@@ -8,4 +8,6 @@ Appcircle.io self-hosted scripts repository that has helper scripts for installa
 
 This script was made for downloading, validating and extracting the Appcircle runner VM image tar.gz file in the background.
 
-For details, you can read the related issue [BE-2005](https://linear.app/appcircle/issue/BE-2005/runner-download-and-extract-on-background#comment-ff3a1bb3)
+The curl command under the [Download MacOS VM](https://docs.appcircle.io/self-hosted-appcircle/self-hosted-runner/runner-vm-setup#download-macos-vm) can exit if user closes the ssh session.
+
+The download and unzip takes so much time. So we this script handles manual tasks for the user.
