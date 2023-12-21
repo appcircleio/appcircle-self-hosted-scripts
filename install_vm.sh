@@ -71,12 +71,11 @@ downloadVmImage() {
 
 extractVmFile() {
   echo "Extracting the VM file."
-  tar -zxf macOS_230921.tar.gz --directory "$HOME/.tart/vms/macOS_230921"
+  tar -zxf $vmImageFile --directory "$HOME/.tart/vms/$vmImageName"
   if [[ $? -ne 0 ]]; then
     echo "Failed to extract the VM file." >&2
     exit 1
   fi
-
 }
 
 checkMd5Sum() {
