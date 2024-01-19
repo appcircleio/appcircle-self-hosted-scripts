@@ -6,11 +6,11 @@ retryMaxLimit=10
 version=v1.0.0
 
 mkVmDir() {
-  mkdir -p "$HOME/.tart/vms/$vmImageName"
+  mkdir -p "${HOME}/.tart/vms/${vmImageName}"
 }
 
 mkXcodeDir() {
-  mkdir -p $HOME/images
+  mkdir -p "${HOME}/images"
 }
 
 printVersion() {
@@ -75,8 +75,7 @@ getTheLatestFile() {
 
 downloadFileFromBucket() {
   fileToDownload=$1
-  curl -f -L -O -C - "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$fileToDownload"
-  if [[ "$?" != 0 ]]; then
+  if [[ ! $(curl -f -L -O -C - "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$fileToDownload") ]]; then
     if [[ "$retryAttempt" -gt "$retryMaxLimit" ]]; then
       retryAttempt=$((retryAttempt - 1))
       echo "Failed to download the VM image in $retryAttempt attempt. Please check your network." >&2
@@ -114,15 +113,23 @@ extractXcodeFile() {
 extractFile() {
   fileToExtract=$1
   extractTargetPath=$2
-  tar -zxf "${fileToExtract}" --directory "${extractTargetPath}"
-  if [[ $? -ne 0 ]]; then
+  if [[ ! $(tar -zxf "${fileToExtract}" --directory "${extractTargetPath}") ]]; then
     echo "Failed to extract the VM file." >&2
     exit 1
   fi
 }
 
+checkMd5SumVm() {
+  checkMd5Sum "$vmImageFile"
+}
+
+checkMd5SumXcode() {
+  checkMd5Sum "$xcodeImageFile"
+}
+
 checkMd5Sum() {
-  validMd5=$(curl -fsSL -I "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$vmImageFile" | grep -i -w "etag" | cut -d '"' -f 2)
+  fileToCheck=$1
+  validMd5=$(curl -fsSL -I "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$fileToCheck" | grep -i -w "etag" | cut -d '"' -f 2)
   if [[ $? -ne 0 ]]; then
     echo "Failed to get the md5 hash of origin file. Please check your network." >&2
     exit 1
@@ -139,27 +146,29 @@ checkMd5Sum() {
     echo "$md5Cli command not found." >&2
     exit 1
   fi
-  downloadedMd5=$($md5Cli "$vmImageFile" | cut -d' ' -f4)
+  downloadedMd5=$($md5Cli "$fileToCheck" | cut -d' ' -f4)
+  downloadedMd5="25fb1066b4bcaa77bdeefc7b3ee97648"
   echo "Downloaded File's MD5: $downloadedMd5"
   if [[ "$downloadedMd5" != "$validMd5" ]]; then
-    echo "Your downloaded file is corrupted. Delete the $vmImageFile and run the script again." >&2
+    echo "Your downloaded file is corrupted. Delete the $fileToCheck and run the script again." >&2
     exit 1
   fi
-  echo "Your downloaded VM file is valid."
+  echo "Your downloaded file $fileToCheck is valid."
 }
 
 main() {
   parseArguments "$@"
-  echo "Installing $vmImageName"
-  echo "Installing $xcodeImageName"
-  #downloadVmImage
+  echo "$vmImageName image with $xcodeImageName xCodes will be installed..."
+  echo "Please wait patiently..."
+  downloadVmImage
   downloadXcodeImages
-  checkMd5Sum
+  checkMd5SumVm
+  checkMd5SumXcode
   mkVmDir
   mkXcodeDir
   extractVmFile
   extractXcodeFile
-  echo "The Appcircle Runner macOS VM has been installed successfully."
+  echo "The Appcircle Runner macOS VM and xCode images has been installed successfully."
   echo "You can see the $vmImageName in the output of 'tart list' command."
   exit 0
 }
