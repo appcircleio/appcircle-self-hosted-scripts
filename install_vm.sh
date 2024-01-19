@@ -9,6 +9,10 @@ mkVmDir() {
   mkdir -p "$HOME/.tart/vms/$vmImageName"
 }
 
+mkXcodeDir() {
+  mkdir -p $HOME/images
+}
+
 printVersion() {
   echo "${version}"
 }
@@ -44,18 +48,34 @@ parseArguments() {
     vmImageName=$(getTheLatestVmImageName)
   fi
   vmImageFile="$vmImageName.tar.gz"
+  xcodeImageName=$2
+  if [[ -z $xcodeImageName ]]; then
+    xcodeImageName=$(getTheLatestXcodeImageName)
+  fi
+  xcodeImageFile="$xcodeImageName.tar.gz"
 }
 
 getTheLatestVmImageName() {
-  runnerList=$(curl -fsSL -X GET "https://storage.googleapis.com/storage/v1/b/appcircle-dev-common/o?matchGlob=self-hosted/macOS*")
-  latestRunner=$(echo "$runnerList" | grep -o '"name": "[^"]*' | tail -n 1)
-  vmFile=$(basename "$latestRunner")
-  echo "${vmFile%.tar.gz}"
+  latestVmImageName=$(getTheLatestFile "macOS*")
+  echo "$latestVmImageName"
 }
 
-downloadVmImage() {
-  echo "Downloading the VM file."
-  curl -f -L -O -C - "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$vmImageFile"
+getTheLatestXcodeImageName() {
+  latestXcodeImageName=$(getTheLatestFile "xcodes*")
+  echo "$latestXcodeImageName"
+}
+
+getTheLatestFile() {
+  fileToSearch=$1
+  fileList=$(curl -fsSL -X GET "https://storage.googleapis.com/storage/v1/b/appcircle-dev-common/o?matchGlob=self-hosted/${fileToSearch}")
+  latestRunner=$(echo "$fileList" | grep -o '"name": "[^"]*' | tail -n 1)
+  fileName=$(basename "$latestRunner")
+  echo "${fileName%.tar.gz}"
+}
+
+downloadFileFromBucket() {
+  fileToDownload=$1
+  curl -f -L -O -C - "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$fileToDownload"
   if [[ "$?" != 0 ]]; then
     if [[ "$retryAttempt" -gt "$retryMaxLimit" ]]; then
       retryAttempt=$((retryAttempt - 1))
@@ -69,9 +89,32 @@ downloadVmImage() {
   fi
 }
 
+downloadVmImage() {
+  echo "Downloading the VM file."
+  downloadFileFromBucket "$vmImageFile"
+}
+
+downloadXcodeImages() {
+  echo "Downloading the xCode images."
+  downloadFileFromBucket "$xcodeImageFile"
+}
+
 extractVmFile() {
   echo "Extracting the VM file."
-  tar -zxf $vmImageFile --directory "$HOME/.tart/vms/$vmImageName"
+  targetVmDir="$HOME/.tart/vms/$vmImageName"
+  extractFile "${vmImageFile}" "${targetVmDir}"
+}
+
+extractXcodeFile() {
+  echo "Extracting the Xcode file."
+  targetXcodeDir="$HOME/images"
+  extractFile "${xcodeImageFile}" "${targetXcodeDir}"
+}
+
+extractFile() {
+  fileToExtract=$1
+  extractTargetPath=$2
+  tar -zxf "${fileToExtract}" --directory "${extractTargetPath}"
   if [[ $? -ne 0 ]]; then
     echo "Failed to extract the VM file." >&2
     exit 1
@@ -108,10 +151,14 @@ checkMd5Sum() {
 main() {
   parseArguments "$@"
   echo "Installing $vmImageName"
-  downloadVmImage
+  echo "Installing $xcodeImageName"
+  #downloadVmImage
+  downloadXcodeImages
   checkMd5Sum
   mkVmDir
+  mkXcodeDir
   extractVmFile
+  extractXcodeFile
   echo "The Appcircle Runner macOS VM has been installed successfully."
   echo "You can see the $vmImageName in the output of 'tart list' command."
   exit 0
