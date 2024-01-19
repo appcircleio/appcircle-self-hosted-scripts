@@ -18,10 +18,11 @@ printVersion() {
 }
 
 printHelp() {
-  printf '%s\n' "Install, validate, extract macOS VM."
-  printf '%s\n' "By default, latest macOS VM image will be installed."
-  printf 'Usage: %s [macOS-vm-name] [-h|--help]\n' "$0"
+  printf '%s\n' "Install, validate, extract macOS VM and xCode images."
+  printf '%s\n' "By default, latest macOS VM and xCode image will be installed."
+  printf 'Usage: %s [macOS-vm-name] [xcode-image-name] [-h|--help]\n' "$0"
   printf '\t%s\n' "macOS-vm-name: Specify the macOS VM name optionally."
+  printf '\t%s\n' "macOS-vm-name: Specify the xCode image name optionally."
   printf '\t%s\n' "-h, --help: Prints help."
 }
 
