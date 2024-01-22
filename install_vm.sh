@@ -38,7 +38,7 @@ parseArguments() {
     fi
   done
 
-  if [[ "$#" -ne 0 ]] && [[ "$#" -ne 1 ]]; then
+  if [[ "$#" -ne 0 ]] && [[ "$#" -ne 2 ]]; then
     echo "Illegal number of parameters." >&2
     printHelp >&2
     exit 1
@@ -76,7 +76,8 @@ getTheLatestFile() {
 
 downloadFileFromBucket() {
   fileToDownload=$1
-  if [[ ! $(curl -f -L -O -C - "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$fileToDownload") ]]; then
+  curl -f -L -O -C - "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$fileToDownload"
+  if [[ "$?" != 0 ]]; then
     if [[ "$retryAttempt" -gt "$retryMaxLimit" ]]; then
       retryAttempt=$((retryAttempt - 1))
       echo "Failed to download the VM image in $retryAttempt attempt. Please check your network." >&2
@@ -114,8 +115,9 @@ extractXcodeFile() {
 extractFile() {
   fileToExtract=$1
   extractTargetPath=$2
-  if [[ ! $(tar -zxf "${fileToExtract}" --directory "${extractTargetPath}") ]]; then
-    echo "Failed to extract the VM file." >&2
+  tar -zxf "${fileToExtract}" --directory "${extractTargetPath}"
+  if [[ "$?" != 0 ]]; then
+    echo "Failed to extract the Tar file. $1" >&2
     exit 1
   fi
 }
@@ -148,7 +150,6 @@ checkMd5Sum() {
     exit 1
   fi
   downloadedMd5=$($md5Cli "$fileToCheck" | cut -d' ' -f4)
-  downloadedMd5="25fb1066b4bcaa77bdeefc7b3ee97648"
   echo "Downloaded File's MD5: $downloadedMd5"
   if [[ "$downloadedMd5" != "$validMd5" ]]; then
     echo "Your downloaded file is corrupted. Delete the $fileToCheck and run the script again." >&2
