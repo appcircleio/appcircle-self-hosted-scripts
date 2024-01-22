@@ -117,9 +117,10 @@ extractFile() {
   extractTargetPath=$2
   tar -zxf "${fileToExtract}" --directory "${extractTargetPath}"
   if [[ "$?" != 0 ]]; then
-    echo "Failed to extract the Tar file. $1" >&2
+    echo "Failed to extract the Tar file. $fileToExtract" >&2
     exit 1
   fi
+  echo "$fileToExtract is extracted to the $extractTargetPath"
 }
 
 checkMd5SumVm() {
