@@ -47,7 +47,6 @@ check_cred_json() {
 
 extract_user_id() {
   credJsonEmail=$(grep -oP '"UUID": "\K[^"]+' <$credJsonPath)
-  echo "credJsonEmail: $credJsonEmail"
   userId="$credJsonEmail"
 }
 
@@ -123,6 +122,8 @@ main() {
   authenticate_gcs "$credJsonPath" "https://www.googleapis.com/auth/devstorage.read_only"
   download_index_file
   download_appcircle_server_package
+  echo "Appcircle Server Package has been downloaded."
+  echo "You can now unzip the package"
 }
 
 main "$@"
