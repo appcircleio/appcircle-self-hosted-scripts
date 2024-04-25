@@ -62,6 +62,7 @@ authenticate_gcs() {
 
 download_appcircle_server_package() {
   latestAppcircleVersion=$(echo "$listOfAppcirclePackages" | tail -n 1)
+  echo "Latest Appcircle Server version: $latestAppcircleVersion"
   bucket="appcircle-self-hosted"
   objectDir="$userId%2F"
   appcircleServerPackage=$latestAppcircleVersion
