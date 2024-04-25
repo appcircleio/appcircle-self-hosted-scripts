@@ -11,6 +11,33 @@ version_info() {
   echo "Appcircle Server Package Downloader $version"
 }
 
+print_help() {
+  printf '%s\n' "Download Appcircle Server package for your organization."
+  printf '%s\n' "Usage: ./download-appcircle-server.sh"
+  printf '%s\n\n' "You must have 'cred.json' in the current directory."
+  printf '\t%s\n' "-h, --help: Prints help."
+  printf '\t%s\n' "-v, --version: Prints script version."
+}
+
+parse_arguments() {
+  while (("$#")); do
+    case "$1" in
+    --help | -h)
+      print_help
+      exit 0
+      ;;
+    --version | -v)
+      version_info
+      exit 0
+      ;;
+    *)
+      return 0
+      ;;
+    esac
+    #shift
+  done
+}
+
 check_cred_json() {
   if ! [[ -f $credJsonPath ]]; then
     echo "'cred.json' file doesn't exist."
@@ -49,6 +76,7 @@ download_index_file() {
 }
 
 main() {
+  parse_arguments "$@"
   echo "Downloading Appcircle Server zip package."
   check_cred_json
   extract_user_id
