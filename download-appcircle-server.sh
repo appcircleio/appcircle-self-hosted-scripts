@@ -104,7 +104,7 @@ EOF
   )
   request_body="$(base64var "$header").$(base64var "$claim")"
   signature=$(echo "$private_key" | openssl dgst -sha256 -sign <(echo -e "$private_key") <(echo -n "$request_body") | base64stream)
-  printf "$request_body.$signature"
+  echo "${request_body}.${signature}"
 }
 
 base64var() {
