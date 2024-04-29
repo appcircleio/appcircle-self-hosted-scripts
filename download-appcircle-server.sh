@@ -73,7 +73,7 @@ download_appcircle_server_package() {
 
 download_index_file() {
   bucket="appcircle-self-hosted"
-  objectDir="0834c312-ea91-4e47-ba91-2a1b3c07f759%2F"
+  objectDir="$userId%2F"
   indexFile="index.txt"
   listOfAppcirclePackages="$(curl -X GET -fsSL -C - \
     -H "Authorization: Bearer $gcloudAccessToken" \
