@@ -67,7 +67,6 @@ authenticate_gcs() {
 
 download_appcircle_server_package() {
   if [[ -n "$preferedPackageVersion" ]]; then
-    echo $listOfAppcirclePackages
     set +e
     foundedAppcircleServerPackage=$(echo "$listOfAppcirclePackages" | sort -rV | grep -m 1 "$preferedPackageVersion" )
     set -e
@@ -84,7 +83,7 @@ download_appcircle_server_package() {
   fi
   bucket="appcircle-self-hosted"
   objectDir="$userId%2F"
-  listOfAppcirclePackages="$(curl -X GET -fL -o $appcircleServerPackage -C - \
+  listOfAppcirclePackages="$(curl -fL -o "$appcircleServerPackage" \
     -H "Authorization: Bearer $gcloudAccessToken" \
     "https://storage.googleapis.com/storage/v1/b/${bucket}/o/${objectDir}${appcircleServerPackage}?alt=media")"
 }
@@ -93,7 +92,7 @@ download_index_file() {
   bucket="appcircle-self-hosted"
   objectDir="$userId%2F"
   indexFile="index.txt"
-  listOfAppcirclePackages="$(curl -X GET -fsSL -C - \
+  listOfAppcirclePackages="$(curl -fsSL \
     -H "Authorization: Bearer $gcloudAccessToken" \
     "https://storage.googleapis.com/storage/v1/b/${bucket}/o/${objectDir}${indexFile}?alt=media")"
 }
