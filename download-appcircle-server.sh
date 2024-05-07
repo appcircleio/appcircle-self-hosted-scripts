@@ -66,11 +66,10 @@ authenticate_gcs() {
 }
 
 download_appcircle_server_package() {
-  # check if preferred package version exits, if yes, reverse sort the list of appcircle packages and grep the first match for preferred version
   if [[ -n "$preferedPackageVersion" ]]; then
-    # reverse sort the appcircle package and get the first match for the preferred version
+    echo $listOfAppcirclePackages
     set +e
-    foundedAppcircleServerPackage=$(echo "$listOfAppcirclePackages" | sort -r | grep -m 1 "$preferedPackageVersion" )
+    foundedAppcircleServerPackage=$(echo "$listOfAppcirclePackages" | sort -rV | grep -m 1 "$preferedPackageVersion" )
     set -e
     if [[ -z "${foundedAppcircleServerPackage}" ]]; then
       echo "No Appcircle Server version found for the preferred version."
