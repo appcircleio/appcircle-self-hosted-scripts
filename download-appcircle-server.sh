@@ -5,6 +5,7 @@ credJsonPath="./cred.json"
 gcloudAccessToken=""
 userId=""
 version="0.1.0"
+preferedPackageVersion=""
 
 version_info() {
   echo "Appcircle Server Package Downloader $version"
@@ -28,6 +29,10 @@ parse_arguments() {
     --version | -v)
       version_info
       exit 0
+      ;;
+    --package-version)
+      shift
+      preferedPackageVersion="$1"
       ;;
     *)
       return 0
@@ -61,11 +66,25 @@ authenticate_gcs() {
 }
 
 download_appcircle_server_package() {
-  latestAppcircleVersion=$(echo "$listOfAppcirclePackages" | tail -n 1)
-  echo "Latest Appcircle Server version: $latestAppcircleVersion"
+  # check if preferred package version exits, if yes, reverse sort the list of appcircle packages and grep the first match for preferred version
+  if [[ -n "$preferedPackageVersion" ]]; then
+    # reverse sort the appcircle package and get the first match for the preferred version
+    set +e
+    foundedAppcircleServerPackage=$(echo "$listOfAppcirclePackages" | sort -r | grep -m 1 "$preferedPackageVersion" )
+    set -e
+    if [[ -z "${foundedAppcircleServerPackage}" ]]; then
+      echo "No Appcircle Server version found for the preferred version."
+      exit 1
+    fi
+    echo  "Preferred Appcircle Server version: $foundedAppcircleServerPackage"
+    appcircleServerPackage="$foundedAppcircleServerPackage"
+  else
+    latestAppcircleVersion=$(echo "$listOfAppcirclePackages" | tail -n 1)
+    echo "Latest Appcircle Server version: $latestAppcircleVersion"
+    appcircleServerPackage=$latestAppcircleVersion
+  fi
   bucket="appcircle-self-hosted"
   objectDir="$userId%2F"
-  appcircleServerPackage=$latestAppcircleVersion
   listOfAppcirclePackages="$(curl -X GET -fL -o $appcircleServerPackage -C - \
     -H "Authorization: Bearer $gcloudAccessToken" \
     "https://storage.googleapis.com/storage/v1/b/${bucket}/o/${objectDir}${appcircleServerPackage}?alt=media")"
@@ -128,3 +147,4 @@ main() {
 }
 
 main "$@"
+
