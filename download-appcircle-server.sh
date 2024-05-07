@@ -53,7 +53,7 @@ extract_user_id() {
 authenticate_gcs() {
   credJsonPath=$1
   scope=$2
-  jwtToken=$(createJWTGoogleCloud "$credJsonPath" "$scope")
+  jwtToken=$(create_jwt_google_cloud "$credJsonPath" "$scope")
   gcloudAccessToken=$(curl -s -X POST https://www.googleapis.com/oauth2/v4/token \
     --data-urlencode 'grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer' \
     --data-urlencode "assertion=$jwtToken" |
@@ -80,21 +80,21 @@ download_index_file() {
     "https://storage.googleapis.com/storage/v1/b/${bucket}/o/${objectDir}${indexFile}?alt=media")"
 }
 
-createJWTGoogleCloud() {
-  valid_for_sec="${3:-3600}"
+create_jwt_google_cloud() {
+  validForSec="${3:-3600}"
   #private_key=$(jq -r .private_key "$dockerCredFile")
-  json_data=$(<"$credJsonPath")
-  private_key=$(echo "$json_data" | grep -oP '"private_key": "\K(.*)(?=")')
-  sa_email=$(echo "$json_data" | grep -oP '"client_email": "\K(.*)(?=")')
+  jsonData=$(<"$credJsonPath")
+  privateKey=$(echo "$jsonData" | grep -oP '"private_key": "\K(.*)(?=")')
+  saEmail=$(echo "$jsonData" | grep -oP '"client_email": "\K(.*)(?=")')
 
   header='{"alg":"RS256","typ":"JWT"}'
-  exp=$(($(date +%s) + "$valid_for_sec"))
+  exp=$(($(date +%s) + "$validForSec"))
   iat=$(date +%s)
 
   claim=$(
     cat <<EOF
 {
-    "iss": "$sa_email",
+    "iss": "$saEmail",
     "scope": "$scope",
     "aud": "https://www.googleapis.com/oauth2/v4/token",
     "exp": $exp,
@@ -103,7 +103,7 @@ createJWTGoogleCloud() {
 EOF
   )
   request_body="$(base64var "$header").$(base64var "$claim")"
-  signature=$(echo "$private_key" | openssl dgst -sha256 -sign <(echo -e "$private_key") <(echo -n "$request_body") | base64stream)
+  signature=$(echo "$privateKey" | openssl dgst -sha256 -sign <(echo -e "$privateKey") <(echo -n "$request_body") | base64stream)
   echo "${request_body}.${signature}"
 }
 
