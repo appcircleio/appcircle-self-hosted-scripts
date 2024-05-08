@@ -4,7 +4,7 @@ Appcircle.io self-hosted scripts repository that has helper scripts for installa
 
 ## Script Overviews
 
-### `install_vm` Script
+### `download-runner.sh` Script
 
 This script was made for downloading, validating and extracting the Appcircle runner VM image and Xcode image tar.gz files in the background.
 
