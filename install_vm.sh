@@ -20,9 +20,8 @@ printVersion() {
 printHelp() {
   printf '%s\n' "Install, validate, extract macOS VM and xCode images."
   printf '%s\n' "By default, latest macOS VM and xCode image will be installed."
-  printf 'Usage: %s [macOS-vm-name] [xcode-image-name] [-h|--help]\n' "$0"
-  printf '\t%s\n' "macOS-vm-name: Specify the macOS VM name optionally."
-  printf '\t%s\n' "macOS-vm-name: Specify the xCode image name optionally."
+  printf 'Usage: %s [runner-version] [-h|--help]\n' "$0"
+  printf '\t%s\n' "runner-version: Specify the Appcircle runner version optionally."
   printf '\t%s\n' "-h, --help: Prints help."
 }
 
@@ -38,22 +37,23 @@ parseArguments() {
     fi
   done
 
-  if [[ "$#" -ne 0 ]] && [[ "$#" -ne 2 ]]; then
+  if [[ "$#" -ne 0 ]] && [[ "$#" -ne 1 ]]; then
     echo "Illegal number of parameters." >&2
     printHelp >&2
     exit 1
   fi
 
-  vmImageName=$1
-  if [[ -z $vmImageName ]]; then
+  runnerVersion=$1
+  if [[ -z $runnerVersion ]]; then
     vmImageName=$(getTheLatestVmImageName)
+    xcodeImageName=$(getTheLatestXcodeImageName)
+  else
+    vmImageName="macOS_${runnerVersion}"
+    xcodeImageName="xcode_${runnerVersion}"
   fi
   vmImageFile="$vmImageName.tar.gz"
-  xcodeImageName=$2
-  if [[ -z $xcodeImageName ]]; then
-    xcodeImageName=$(getTheLatestXcodeImageName)
-  fi
   xcodeImageFile="$xcodeImageName.tar.gz"
+
 }
 
 getTheLatestVmImageName() {
@@ -75,6 +75,7 @@ getTheLatestFile() {
 }
 
 downloadFileFromBucket() {
+  set -x
   fileToDownload=$1
   curl -f -L -O -C - "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$fileToDownload"
   if [[ "$?" != 0 ]]; then
@@ -96,7 +97,7 @@ downloadVmImage() {
 }
 
 downloadXcodeImages() {
-  echo "Downloading the xCode images."
+  echo "Downloading the Xcode images."
   downloadFileFromBucket "$xcodeImageFile"
 }
 
@@ -161,7 +162,7 @@ checkMd5Sum() {
 
 main() {
   parseArguments "$@"
-  echo "$vmImageName image with $xcodeImageName xCodes will be installed..."
+  echo "$vmImageName image with $xcodeImageName Xcodes will be installed..."
   echo "Please wait patiently..."
   downloadVmImage
   downloadXcodeImages
@@ -171,7 +172,7 @@ main() {
   mkXcodeDir
   extractVmFile
   extractXcodeFile
-  echo "The Appcircle Runner macOS VM and xCode images has been installed successfully."
+  echo "The Appcircle Runner macOS VM and Xcode images has been installed successfully."
   echo "You can see the $vmImageName in the output of 'tart list' command."
   exit 0
 }
