@@ -18,8 +18,8 @@ printVersion() {
 }
 
 printHelp() {
-  printf '%s\n' "Install, validate, extract macOS VM and xCode images."
-  printf '%s\n' "By default, latest macOS VM and xCode image will be installed."
+  printf '%s\n' "Install, validate, extract macOS VM and Xcode images."
+  printf '%s\n' "By default, latest macOS VM and Xcode image will be installed."
   printf 'Usage: %s [runner-version] [-h|--help]\n' "$0"
   printf '\t%s\n' "runner-version: Specify the Appcircle runner version optionally."
   printf '\t%s\n' "-h, --help: Prints help."
