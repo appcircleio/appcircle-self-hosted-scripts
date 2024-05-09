@@ -13,10 +13,11 @@ version_info() {
 
 print_help() {
   printf '%s\n' "Download Appcircle Server package for your organization."
-  printf '%s\n' "Usage: ./download-appcircle-server.sh"
+  printf '%s\n' "Usage: $0"
   printf '%s\n\n' "You must have 'cred.json' in the current directory."
   printf '\t%s\n' "-h, --help: Prints help."
   printf '\t%s\n' "-v, --version: Prints script version."
+  printf '\t%s\n' "-p, --package-version: Specify a Appcircle Server version."
 }
 
 parse_arguments() {
