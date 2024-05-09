@@ -45,7 +45,7 @@ parse_arguments() {
 
 check_cred_json() {
   if ! [[ -f $credJsonPath ]]; then
-    echo "'cred.json' file doesn't exist."
+    echo "'cred.json' file doesn't exist in '$(pwd)'."
     echo "You need 'cred.json' to download Appcircle Server zip package."
     exit 1
   fi
