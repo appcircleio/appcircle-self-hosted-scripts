@@ -31,7 +31,7 @@ parse_arguments() {
       version_info
       exit 0
       ;;
-    --package-version)
+    --package-version | -p)
       shift
       preferedPackageVersion="$1"
       ;;
