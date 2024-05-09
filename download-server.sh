@@ -20,7 +20,12 @@ print_help() {
   printf '\t%s\n' "-p, --package-version: Specify a Appcircle Server version."
 }
 
+check_env_variables(){
+  preferedPackageVersion="${AC_SERVER_VERSION:-}"
+}
+
 parse_arguments() {
+  check_env_variables
   while (("$#")); do
     case "$1" in
     --help | -h)
@@ -36,6 +41,7 @@ parse_arguments() {
       preferedPackageVersion="$1"
       ;;
     *)
+      
       return 0
       ;;
     esac
@@ -69,6 +75,7 @@ authenticate_gcs() {
 download_appcircle_server_package() {
   if [[ -n "$preferedPackageVersion" ]]; then
     set +e
+    echo "$listOfAppcirclePackages" | sort -rV 
     foundedAppcircleServerPackage=$(echo "$listOfAppcirclePackages" | sort -rV | grep -m 1 "$preferedPackageVersion" )
     set -e
     if [[ -z "${foundedAppcircleServerPackage}" ]]; then
