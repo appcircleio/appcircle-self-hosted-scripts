@@ -67,14 +67,21 @@ check_cred_json() {
 }
 
 extract_user_id() {
+  set +e
   credJsonEmail=$(grep -oP '"UUID": "\K[^"]+' <$credJsonPath)
+  if [[ -z "$credJsonEmail" ]]; then
+    echo "'UUID' was not found in 'cred.json'. Please check your 'cred.json' file."
+    return 1
+  fi
+  set -e
   userId="$credJsonEmail"
 }
 
 authenticate_gcs() {
   credJsonPath=$1
   scope=$2
-  jwtToken=$(create_jwt_google_cloud "$credJsonPath" "$scope")
+  create_jwt_google_cloud "$credJsonPath" "$scope"
+  jwtToken="${jwtGoogleCloud}"
   gcloudAccessToken=$(curl -s -X POST https://www.googleapis.com/oauth2/v4/token \
     --data-urlencode 'grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer' \
     --data-urlencode "assertion=$jwtToken" |
@@ -117,8 +124,18 @@ create_jwt_google_cloud() {
   validForSec="${3:-3600}"
   #private_key=$(jq -r .private_key "$dockerCredFile")
   jsonData=$(<"$credJsonPath")
+  set +e
   privateKey=$(echo "$jsonData" | grep -oP '"private_key": "\K(.*)(?=")')
   saEmail=$(echo "$jsonData" | grep -oP '"client_email": "\K(.*)(?=")')
+  if [[ -z "$privateKey" ]]; then
+    echo "'private_key' was not found in 'cred.json'. Please check your 'cred.json' file."
+    exit 1
+  fi
+  if [[ -z "$saEmail" ]]; then
+    echo "'client_email' was not found in 'cred.json'. Please check your 'cred.json' file."
+    exit 1
+  fi
+  set -e
 
   header='{"alg":"RS256","typ":"JWT"}'
   exp=$(($(date +%s) + "$validForSec"))
@@ -137,7 +154,7 @@ EOF
   )
   request_body="$(base64var "$header").$(base64var "$claim")"
   signature=$(echo "$privateKey" | openssl dgst -sha256 -sign <(echo -e "$privateKey") <(echo -n "$request_body") | base64stream)
-  echo "${request_body}.${signature}"
+  jwtGoogleCloud="${request_body}.${signature}"
 }
 
 base64var() {
