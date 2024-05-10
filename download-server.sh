@@ -12,12 +12,12 @@ version_info() {
 }
 
 print_help() {
-  printf '%s\n' "Download Appcircle Server package for your organization."
+  printf '%s\n' "Download the Appcircle server package for your organization."
   printf '%s\n' "Usage: $0"
   printf '%s\n\n' "You must have 'cred.json' in the current directory."
   printf '\t%s\n' "-h, --help: Prints help."
   printf '\t%s\n' "-v, --version: Prints script version."
-  printf '\t%s\n' "-p, --package-version: Specify a Appcircle Server version."
+  printf '\t%s\n' "-p, --package-version: Specify an Appcircle server version."
 }
 
 check_env_variables() {
@@ -61,7 +61,7 @@ parse_arguments() {
 check_cred_json() {
   if ! [[ -f $credJsonPath ]]; then
     echo "'cred.json' file doesn't exist in '$(pwd)'."
-    echo "You need 'cred.json' to download Appcircle Server zip package."
+    echo "You need 'cred.json' to download the Appcircle server zip package."
     exit 1
   fi
 }
@@ -87,14 +87,14 @@ download_appcircle_server_package() {
     foundedAppcircleServerPackage=$(echo "$listOfAppcirclePackages" | sort -rV | grep -m 1 "$preferedPackageVersion")
     set -e
     if [[ -z "${foundedAppcircleServerPackage}" ]]; then
-      echo "No Appcircle Server version found for the preferred version."
+      echo "No Appcircle server version was found for the preferred version."
       exit 1
     fi
-    echo "Preferred Appcircle Server version: $foundedAppcircleServerPackage"
+    echo "Preferred version: $foundedAppcircleServerPackage"
     appcircleServerPackage="$foundedAppcircleServerPackage"
   else
     latestAppcircleVersion=$(echo "$listOfAppcirclePackages" | tail -n 1)
-    echo "Latest Appcircle Server version: $latestAppcircleVersion"
+    echo "Latest version: $latestAppcircleVersion"
     appcircleServerPackage=$latestAppcircleVersion
   fi
   bucket="appcircle-self-hosted"
@@ -151,14 +151,14 @@ base64stream() {
 main() {
   parse_arguments "$@"
   suffix_version_option
-  echo "Downloading Appcircle Server zip package."
+  echo "Downloading the Appcircle server zip package..."
   check_cred_json
   extract_user_id
   authenticate_gcs "$credJsonPath" "https://www.googleapis.com/auth/devstorage.read_only"
   download_index_file
   download_appcircle_server_package
-  echo "Appcircle Server Package has been downloaded."
-  echo "You can now unzip the package"
+  echo "Appcircle server package has been downloaded successfully."
+  echo "You can now extract the package and follow the instructions in the setup documents."
 }
 
 main "$@"
