@@ -24,6 +24,13 @@ check_env_variables(){
   preferedPackageVersion="${AC_SERVER_VERSION:-}"
 }
 
+suffix_version_option(){
+  dotCount=$(echo "$preferedPackageVersion" | grep -o "\." | wc -l)
+  if [[ "${dotCount}" -gt 1 ]]; then
+    preferedPackageVersion="${preferedPackageVersion}-"
+  fi
+}
+
 parse_arguments() {
   check_env_variables
   while (("$#")); do
@@ -141,6 +148,7 @@ base64stream() {
 
 main() {
   parse_arguments "$@"
+  suffix_version_option
   echo "Downloading Appcircle Server zip package."
   check_cred_json
   extract_user_id
