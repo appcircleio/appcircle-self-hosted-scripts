@@ -47,6 +47,11 @@ parse_arguments() {
       ;;
     --package-version | -p)
       shift
+      local packageVersion=${1:-}
+      if [[ -z "$packageVersion" ]]; then
+        echo "Please provide a package version."
+        exit 1
+      fi
       preferedPackageVersion="$1"
       ;;
     *)
