@@ -76,7 +76,7 @@ extract_user_id() {
   credJsonEmail=$(grep -oP '"UUID": "\K[^"]+' <$credJsonPath)
   if [[ -z "$credJsonEmail" ]]; then
     echo "'UUID' was not found in 'cred.json'. Please check your 'cred.json' file."
-    return 1
+    exit 1
   fi
   set -e
   userId="$credJsonEmail"
