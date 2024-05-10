@@ -20,14 +20,16 @@ print_help() {
   printf '\t%s\n' "-p, --package-version: Specify a Appcircle Server version."
 }
 
-check_env_variables(){
+check_env_variables() {
   preferedPackageVersion="${AC_SERVER_VERSION:-}"
 }
 
-suffix_version_option(){
-  dotCount=$(echo "$preferedPackageVersion" | grep -o "\." | wc -l)
-  if [[ "${dotCount}" -gt 1 ]]; then
-    preferedPackageVersion="${preferedPackageVersion}-"
+suffix_version_option() {
+  if [[ -n "${preferedPackageVersion}" ]]; then
+    dotCount=$(echo "$preferedPackageVersion" | grep -o "\." | wc -l)
+    if [[ "${dotCount}" -gt 1 ]]; then
+      preferedPackageVersion="${preferedPackageVersion}-"
+    fi
   fi
 }
 
@@ -48,7 +50,7 @@ parse_arguments() {
       preferedPackageVersion="$1"
       ;;
     *)
-      
+
       return 0
       ;;
     esac
@@ -82,13 +84,13 @@ authenticate_gcs() {
 download_appcircle_server_package() {
   if [[ -n "$preferedPackageVersion" ]]; then
     set +e
-    foundedAppcircleServerPackage=$(echo "$listOfAppcirclePackages" | sort -rV | grep -m 1 "$preferedPackageVersion" )
+    foundedAppcircleServerPackage=$(echo "$listOfAppcirclePackages" | sort -rV | grep -m 1 "$preferedPackageVersion")
     set -e
     if [[ -z "${foundedAppcircleServerPackage}" ]]; then
       echo "No Appcircle Server version found for the preferred version."
       exit 1
     fi
-    echo  "Preferred Appcircle Server version: $foundedAppcircleServerPackage"
+    echo "Preferred Appcircle Server version: $foundedAppcircleServerPackage"
     appcircleServerPackage="$foundedAppcircleServerPackage"
   else
     latestAppcircleVersion=$(echo "$listOfAppcirclePackages" | tail -n 1)
@@ -160,4 +162,3 @@ main() {
 }
 
 main "$@"
-
