@@ -4,9 +4,9 @@ Appcircle.io self-hosted scripts repository that has helper scripts for installa
 
 ## Script Overviews
 
-### `download-appcircle-server.sh`
+### `download-server.sh`
 
-You can use that script to download the latest Appcircle Server package.
+You can use that script to download the latest Appcircle server package.
 
 Save the script to a directory.
 Save the `cred.json` file to the same directory.
@@ -14,7 +14,7 @@ Save the `cred.json` file to the same directory.
 Run the script with no argument.
 
 ```bash
-./download-appcircle-server.sh
+./download-server.sh
 ```
 
 This will download the latest and licensed Appcircle server for your `cred.json` file.
