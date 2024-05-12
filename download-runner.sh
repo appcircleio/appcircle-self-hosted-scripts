@@ -3,7 +3,7 @@ set -o pipefail
 retryAttempt=1
 retryInterval=30
 retryMaxLimit=10
-version=v1.0.0
+version=1.0.0
 
 mkVmDir() {
   mkdir -p "${HOME}/.tart/vms/${vmImageName}"
@@ -18,11 +18,12 @@ printVersion() {
 }
 
 printHelp() {
-  printf '%s\n' "Install, validate, extract macOS VM and Xcode images."
+  printf '%s\n' "Download, extract, validate, and install macOS VM and Xcode images."
   printf '%s\n' "By default, latest macOS VM and Xcode image will be installed."
   printf 'Usage: %s [runner-version] [-h|--help]\n' "$0"
   printf '\t%s\n' "runner-version: Specify the Appcircle runner version optionally."
   printf '\t%s\n' "-h, --help: Prints help."
+  printf '\t%s\n' "-v, --version: Prints version."
 }
 
 parseArguments() {
