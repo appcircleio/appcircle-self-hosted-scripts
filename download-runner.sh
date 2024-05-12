@@ -76,7 +76,6 @@ getTheLatestFile() {
 }
 
 downloadFileFromBucket() {
-  set -x
   fileToDownload=$1
   curl -f -L -O -C - "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$fileToDownload"
   if [[ "$?" != 0 ]]; then
