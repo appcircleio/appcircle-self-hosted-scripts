@@ -174,7 +174,9 @@ main() {
   extractVmFile
   extractXcodeFile
   echo "The Appcircle Runner macOS VM and Xcode images has been installed successfully."
-  echo "You can see the $vmImageName in the output of 'tart list' command."
+  if tart --version &>/dev/null; then
+    echo "You can see the $vmImageName in the output of 'tart list' command."
+  fi
   exit 0
 }
 
