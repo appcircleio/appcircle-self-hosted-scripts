@@ -93,23 +93,23 @@ downloadFileFromBucket() {
 }
 
 downloadVmImage() {
-  echo "Downloading the VM file."
+  echo "Downloading the VM image..."
   downloadFileFromBucket "$vmImageFile"
 }
 
 downloadXcodeImages() {
-  echo "Downloading the Xcode images."
+  echo "Downloading the Xcode images..."
   downloadFileFromBucket "$xcodeImageFile"
 }
 
 extractVmFile() {
-  echo "Extracting the VM file."
+  echo "Extracting the VM image..."
   targetVmDir="$HOME/.tart/vms/$vmImageName"
   extractFile "${vmImageFile}" "${targetVmDir}"
 }
 
 extractXcodeFile() {
-  echo "Extracting the Xcode file."
+  echo "Extracting the Xcode images..."
   targetXcodeDir="$HOME/images"
   extractFile "${xcodeImageFile}" "${targetXcodeDir}"
 }
@@ -164,7 +164,7 @@ checkMd5Sum() {
 main() {
   parseArguments "$@"
   echo "$vmImageName image with $xcodeImageName Xcodes will be installed..."
-  echo "Please wait patiently..."
+  echo "It may take some time to complete with respect to your network speed. Please wait patiently..."
   downloadVmImage
   downloadXcodeImages
   checkMd5SumVm
@@ -173,7 +173,7 @@ main() {
   mkXcodeDir
   extractVmFile
   extractXcodeFile
-  echo "The Appcircle Runner macOS VM and Xcode images has been installed successfully."
+  echo "The Appcircle runner macOS VM and Xcode images have been installed successfully."
   if tart --version &>/dev/null; then
     echo "You can see the $vmImageName in the output of 'tart list' command."
   fi
