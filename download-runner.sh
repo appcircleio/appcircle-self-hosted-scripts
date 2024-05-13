@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -o pipefail
 retryAttempt=1
+retryAttemptOrigin="${retryAttempt}"
 retryInterval=30
 retryMaxLimit=10
 version=1.0.0
@@ -87,17 +88,19 @@ downloadFileFromBucket() {
     echo "Download failed. Re-trying: $retryAttempt."
     retryAttempt=$((retryAttempt + 1))
     sleep $retryInterval
-    downloadVmImage
+    downloadFileFromBucket "$1"
   fi
 }
 
 downloadVmImage() {
   echo "Downloading the VM image..."
+  retryAttempt="${retryAttemptOrigin}"
   downloadFileFromBucket "$vmImageFile"
 }
 
 downloadXcodeImages() {
   echo "Downloading the Xcode images..."
+  retryAttempt="${retryAttemptOrigin}"
   downloadFileFromBucket "$xcodeImageFile"
 }
 
