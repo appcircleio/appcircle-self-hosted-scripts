@@ -4,7 +4,7 @@ retryAttempt=1
 retryAttemptOrigin="${retryAttempt}"
 retryInterval=30
 retryMaxLimit=10
-version=1.0.0
+version=1.0.1
 
 mkVmDir() {
   mkdir -p "${HOME}/.tart/vms/${vmImageName}"
