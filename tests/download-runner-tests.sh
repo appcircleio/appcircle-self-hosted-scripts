@@ -7,11 +7,12 @@ testRunnerDownload(){
   $runnerDownloadScript test &> "$stdoutF"
 
   macOSValidMd5="bcf4afb27d8da7034577047979715934"
-  assertContains "Valid MD5 for macOS images should be found." "$(cat "${stdoutF}")" "Valid MD5: $macOSValidMd5"
+  assertContains "Valid remote MD5 for macOS images should be found." "$(cat "${stdoutF}")" "Valid MD5: $macOSValidMd5"
   assertContains "MD5 check for macOS image should be successfull." "$(cat "${stdoutF}")" "Your downloaded file macOS_test.tar.gz is valid"
   
   xcodesValidMd5="bcf4afb27d8da7034577047979715934"
-  assertContains "Valid MD5 for Xcode images should be found." "$(cat "${stdoutF}")" "Valid MD5: $xcodesValidMd5"
+  assertContains "Valid remote MD5 for Xcode images should be found." "$(cat "${stdoutF}")" "Valid MD5: $xcodesValidMd5"
+  assertContains "MD5 check for Xcodes image should be successfull." "$(cat "${stdoutF}")" "Your downloaded file xcodes_test.tar.gz is valid"
 
 
   tartVmsDirectory="$HOME/.tart/vms"

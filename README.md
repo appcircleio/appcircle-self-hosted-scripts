@@ -28,3 +28,20 @@ Run the script with no argument.
 ```
 
 This will download the latest and licensed Appcircle server for your `cred.json` file.
+
+## Testing
+
+### Test Cases
+
+- `download-runner-tests.sh`
+  - **testRunnerDownload**
+    -  Valid remote MD5 for macOS images should be found.
+    -  MD5 check for macOS image should be successfull.
+    -  Valid remote MD5 for Xcode images should be found.
+    -  MD5 check for Xcodes image should be successfull.
+    -  MacOS image should be extracted successfully.
+    -  MacOS image directory should be found in the "$HOME/.tart/vms" directory.
+    -  Xcode images should be extracted successfully.
+    -  Xcode images directory should be found in the "$HOME" directory.
+    -  Xcode images directory should contain some dmg files.
+    -  Script output should container success log.
