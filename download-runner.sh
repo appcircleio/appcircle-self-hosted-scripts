@@ -81,7 +81,7 @@ downloadFileFromBucket() {
   curl -f -L -O -C - "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$fileToDownload"
   if [[ "$?" != 0 ]]; then
     if [[ "$retryAttempt" -gt "$retryMaxLimit" ]]; then
-      echo "Failed to download the VM image in $((retryAttempt - 1)) attempt. Please check your network." >&2
+      echo "Failed to download $fileToDownload in $((retryAttempt - 1)) attempt. Please check your network." >&2
       exit 1
     fi
     echo "Download failed. Re-trying: $retryAttempt."
