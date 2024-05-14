@@ -66,9 +66,9 @@ OK
 - `download-runner-tests.sh`
   - **testRunnerDownload**
     -  Valid remote MD5 for macOS images should be found.
-    -  MD5 check for macOS image should be successfull.
+    -  MD5 check for macOS image should be successful.
     -  Valid remote MD5 for Xcode images should be found.
-    -  MD5 check for Xcodes image should be successfull.
+    -  MD5 check for Xcodes image should be successful.
     -  MacOS image should be extracted successfully.
     -  MacOS image directory should be found in the "$HOME/.tart/vms" directory.
     -  Xcode images should be extracted successfully.
