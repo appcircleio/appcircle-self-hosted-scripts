@@ -5,9 +5,8 @@ checkShunit2(){
 }
 
 setupDependencyPath(){
-  depsPath="$(pwd)/deps/bin"
   testDepsPath="$(pwd)/tests/deps/bin"
-  export PATH="$PATH:${depsPath}:${testDepsPath}"
+  export PATH="$PATH:${testDepsPath}"
 }
 
 main(){
