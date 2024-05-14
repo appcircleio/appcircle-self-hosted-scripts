@@ -32,7 +32,7 @@ testRunnerDownload() {
   # @TODO: Will be uncommented after the macOS_test test file meets the requirements.
   #assertContains "Tart list should contain the new macOS VM name" "$(tart list)" "macOS_test"
 
-  assertContains "Script output should containe success log." "$(cat "${stdoutF}")" "The Appcircle runner macOS VM and Xcode images have been installed successfully"
+  assertContains "Script output should contain success log." "$(cat "${stdoutF}")" "The Appcircle runner macOS VM and Xcode images have been installed successfully"
 
 }
 
@@ -48,9 +48,9 @@ testRunnerDownloadWithNonExistingVersion() {
   bash "$tempScript" nonExistingVersion &>"$stdoutF"
   errorNotFoundCount=$(grep -o "The requested URL returned error: 404" "${stdoutF}" | wc -l)
   errorNotFoundCount="${errorNotFoundCount// /}"
-  assertEquals "Script output should containe 404 logs 6 times." "6" "$errorNotFoundCount"
+  assertEquals "Script output should contain 404 logs 6 times." "6" "$errorNotFoundCount"
 
-  assertContains "Script output should containe fail log." "$(cat "${stdoutF}")" "Failed to download macOS_nonExistingVersion.tar.gz"
+  assertContains "Script output should contain fail log." "$(cat "${stdoutF}")" "Failed to download macOS_nonExistingVersion.tar.gz"
 
 }
 

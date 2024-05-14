@@ -75,3 +75,6 @@ OK
     -  Xcode images directory should be found in the "$HOME" directory.
     -  Xcode images directory should contain some dmg files.
     -  Script output should container success log.
+  -  **testRunnerDownloadWithNonExistingVersion**
+     - Script output should contain 404 logs 6 times.
+     - Script output should contain fail log.
