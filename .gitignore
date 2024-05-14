@@ -1,4 +1,5 @@
 macOS*
-xcode*
+xcodes*
+tests/reports
 cred.json
 appcircle-server*.zip
