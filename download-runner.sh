@@ -51,7 +51,7 @@ parseArguments() {
     xcodeImageName=$(getTheLatestXcodeImageName)
   else
     vmImageName="macOS_${runnerVersion}"
-    xcodeImageName="xcode_${runnerVersion}"
+    xcodeImageName="xcodes_${runnerVersion}"
   fi
   vmImageFile="$vmImageName.tar.gz"
   xcodeImageFile="$xcodeImageName.tar.gz"
