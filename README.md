@@ -37,13 +37,13 @@ This will download the latest and licensed Appcircle server for your `cred.json`
 - You can test overall functionality with bash script tests.
 - You can see all the tests inside the `tests` folder.
 - The ones with names ending with `*Test.sh` files are the **test cases** that are waiting to run.
-- For example, to run tests for the `export`, you can simply call it:
+- For example, to run tests for the `download-runner.sh`, you can simply call it:
 
 ```bash
 ./tests/download-runner-tests.sh
 ```
 
-> :warning: **Warning**: The test scripts must be executed from the repo's root directory. For instance, `./tests/exportTest.sh`. The command running inside the `tests` folder as `./exportTest.sh` will not work.
+> :warning: **Warning**: The test scripts must be executed from the repo's root directory. For instance, `./tests/download-runner-tests.sh`. The command running inside the `tests` folder as `./download-runner-tests.sh` will not work.
 
 - You should see an output like:
 
@@ -65,16 +65,16 @@ OK
 
 - `download-runner-tests.sh`
   - **testRunnerDownload**
-    -  Valid remote MD5 for macOS images should be found.
-    -  MD5 check for macOS image should be successful.
-    -  Valid remote MD5 for Xcode images should be found.
-    -  MD5 check for Xcodes image should be successful.
-    -  MacOS image should be extracted successfully.
-    -  MacOS image directory should be found in the "$HOME/.tart/vms" directory.
-    -  Xcode images should be extracted successfully.
-    -  Xcode images directory should be found in the "$HOME" directory.
-    -  Xcode images directory should contain some dmg files.
-    -  Script output should container success log.
-  -  **testRunnerDownloadWithNonExistingVersion**
-     - Script output should contain 404 logs 6 times.
-     - Script output should contain fail log.
+    - Valid remote MD5 for macOS images should be found.
+    - MD5 check for macOS image should be successful.
+    - Valid remote MD5 for Xcode images should be found.
+    - MD5 check for Xcodes image should be successful.
+    - MacOS image should be extracted successfully.
+    - MacOS image directory should be found in the "$HOME/.tart/vms" directory.
+    - Xcode images should be extracted successfully.
+    - Xcode images directory should be found in the "$HOME" directory.
+    - Xcode images directory should contain some dmg files.
+    - Script output should container success log.
+  - **testRunnerDownloadWithNonExistingVersion**
+    - Script output should contain 404 logs 6 times.
+    - Script output should contain fail log.
