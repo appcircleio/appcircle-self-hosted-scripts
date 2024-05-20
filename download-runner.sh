@@ -4,7 +4,7 @@ retryAttempt=1
 retryAttemptOrigin="${retryAttempt}"
 retryInterval=30
 retryMaxLimit=10
-version=1.0.1
+version=1.0.2
 
 mkVmDir() {
   mkdir -p "${HOME}/.tart/vms/${vmImageName}"
@@ -51,7 +51,7 @@ parseArguments() {
     xcodeImageName=$(getTheLatestXcodeImageName)
   else
     vmImageName="macOS_${runnerVersion}"
-    xcodeImageName="xcode_${runnerVersion}"
+    xcodeImageName="xcodes_${runnerVersion}"
   fi
   vmImageFile="$vmImageName.tar.gz"
   xcodeImageFile="$xcodeImageName.tar.gz"
@@ -81,7 +81,7 @@ downloadFileFromBucket() {
   curl -f -L -O -C - "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$fileToDownload"
   if [[ "$?" != 0 ]]; then
     if [[ "$retryAttempt" -gt "$retryMaxLimit" ]]; then
-      echo "Failed to download the VM image in $((retryAttempt - 1)) attempt. Please check your network." >&2
+      echo "Failed to download $fileToDownload in $((retryAttempt - 1)) attempt. Please check your network." >&2
       exit 1
     fi
     echo "Download failed. Re-trying: $retryAttempt."
