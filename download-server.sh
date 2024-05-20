@@ -4,7 +4,7 @@ set -eou pipefail
 credJsonPath="./cred.json"
 gcloudAccessToken=""
 userId=""
-version="0.1.1"
+version="0.1.2"
 preferedPackageVersion=""
 
 version_info() {
