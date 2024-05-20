@@ -4,7 +4,7 @@ set -eou pipefail
 credJsonPath="./cred.json"
 gcloudAccessToken=""
 userId=""
-version="0.1.1"
+version="0.1.2"
 preferedPackageVersion=""
 
 version_info() {
@@ -96,7 +96,7 @@ authenticate_gcs() {
 download_appcircle_server_package() {
   if [[ -n "$preferedPackageVersion" ]]; then
     set +e
-    foundedAppcircleServerPackage=$(echo "$listOfAppcirclePackages" | sort -rV | grep -m 1 "$preferedPackageVersion")
+    foundedAppcircleServerPackage=$(echo "$listOfAppcirclePackages" | tac | grep -m 1 "$preferedPackageVersion")
     set -e
     if [[ -z "${foundedAppcircleServerPackage}" ]]; then
       echo "No Appcircle server version was found for the preferred version."
