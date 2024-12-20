@@ -5,7 +5,7 @@ credJsonPath="./cred.json"
 gcloudAccessToken=""
 userId=""
 version="0.1.2"
-preferedPackageVersion=""
+preferredPackageVersion=""
 
 version_info() {
   echo "Appcircle Server Package Downloader $version"
@@ -20,15 +20,20 @@ print_help() {
   printf '\t%s\n' "-p, --package-version: Specify an Appcircle server version."
 }
 
+error_exit() {
+    echo "$1" >&2
+    exit "${2:-1}"
+}
+
 check_env_variables() {
-  preferedPackageVersion="${AC_SERVER_VERSION:-}"
+  preferredPackageVersion="${AC_SERVER_VERSION:-}"
 }
 
 suffix_version_option() {
-  if [[ -n "${preferedPackageVersion}" ]]; then
-    dotCount=$(echo "$preferedPackageVersion" | grep -o "\." | wc -l)
+  if [[ -n "${preferredPackageVersion}" ]]; then
+    dotCount=$(echo "$preferredPackageVersion" | grep -o "\." | wc -l)
     if [[ "${dotCount}" -gt 1 ]]; then
-      preferedPackageVersion="${preferedPackageVersion}-"
+      preferredPackageVersion="${preferredPackageVersion}-"
     fi
   fi
 }
@@ -52,7 +57,7 @@ parse_arguments() {
         echo "Please provide a package version."
         exit 1
       fi
-      preferedPackageVersion="$1"
+      preferredPackageVersion="$1"
       ;;
     *)
 
@@ -75,8 +80,7 @@ extract_user_id() {
   set +e
   credJsonEmail=$(grep -oP '"UUID": "\K[^"]+' <$credJsonPath)
   if [[ -z "$credJsonEmail" ]]; then
-    echo "'UUID' was not found in 'cred.json'. Please check your 'cred.json' file."
-    exit 1
+    error_exit "'UUID' was not found in 'cred.json'. Please check your 'cred.json' file." "1"
   fi
   set -e
   userId="$credJsonEmail"
@@ -87,16 +91,16 @@ authenticate_gcs() {
   scope=$2
   create_jwt_google_cloud "$credJsonPath" "$scope"
   jwtToken="${jwtGoogleCloud}"
-  gcloudAccessToken=$(curl -s -X POST https://www.googleapis.com/oauth2/v4/token \
+  authResponse=$(curl -fs -X POST https://www.googleapis.com/oauth2/v4/token \
     --data-urlencode 'grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer' \
-    --data-urlencode "assertion=$jwtToken" |
-    grep -oP '"access_token":"\K[^"]+')
+    --data-urlencode "assertion=$jwtToken" || error_exit "Connection to www.googleapis.com failed. Please check your network." )
+  gcloudAccessToken=$(echo -n "$authResponse" | grep -oP '"access_token":"\K[^"]+')
 }
 
 download_appcircle_server_package() {
-  if [[ -n "$preferedPackageVersion" ]]; then
+  if [[ -n "$preferredPackageVersion" ]]; then
     set +e
-    foundedAppcircleServerPackage=$(echo "$listOfAppcirclePackages" | tac | grep -m 1 "$preferedPackageVersion")
+    foundedAppcircleServerPackage=$(echo "$listOfAppcirclePackages" | tac | grep -m 1 "$preferredPackageVersion")
     set -e
     if [[ -z "${foundedAppcircleServerPackage}" ]]; then
       echo "No Appcircle server version was found for the preferred version."
@@ -113,7 +117,7 @@ download_appcircle_server_package() {
   objectDir="$userId%2F"
   listOfAppcirclePackages="$(curl -fL -o "$appcircleServerPackage" \
     -H "Authorization: Bearer $gcloudAccessToken" \
-    "https://storage.googleapis.com/storage/v1/b/${bucket}/o/${objectDir}${appcircleServerPackage}?alt=media")"
+    "https://storage.googleapis.com/storage/v1/b/${bucket}/o/${objectDir}${appcircleServerPackage}?alt=media" || error_exit "Error while getting the list of appcircle packages from storage.googleapis.com. Please check your network.")"
 }
 
 download_index_file() {
@@ -122,7 +126,7 @@ download_index_file() {
   indexFile="index.txt"
   listOfAppcirclePackages="$(curl -fsSL \
     -H "Authorization: Bearer $gcloudAccessToken" \
-    "https://storage.googleapis.com/storage/v1/b/${bucket}/o/${objectDir}${indexFile}?alt=media")"
+    "https://storage.googleapis.com/storage/v1/b/${bucket}/o/${objectDir}${indexFile}?alt=media" || error_exit "Error while getting the index file from storage.googleapis.com. Please check your network.")"
 }
 
 create_jwt_google_cloud() {
@@ -133,12 +137,10 @@ create_jwt_google_cloud() {
   privateKey=$(echo "$jsonData" | grep -oP '"private_key": "\K(.*)(?=")')
   saEmail=$(echo "$jsonData" | grep -oP '"client_email": "\K(.*)(?=")')
   if [[ -z "$privateKey" ]]; then
-    echo "'private_key' was not found in 'cred.json'. Please check your 'cred.json' file."
-    exit 1
+    error_exit "'private_key' was not found in 'cred.json'. Please check your 'cred.json' file."
   fi
   if [[ -z "$saEmail" ]]; then
-    echo "'client_email' was not found in 'cred.json'. Please check your 'cred.json' file."
-    exit 1
+    error_exit "'client_email' was not found in 'cred.json'. Please check your 'cred.json' file."
   fi
   set -e
 
