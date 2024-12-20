@@ -137,12 +137,10 @@ create_jwt_google_cloud() {
   privateKey=$(echo "$jsonData" | grep -oP '"private_key": "\K(.*)(?=")')
   saEmail=$(echo "$jsonData" | grep -oP '"client_email": "\K(.*)(?=")')
   if [[ -z "$privateKey" ]]; then
-    echo "'private_key' was not found in 'cred.json'. Please check your 'cred.json' file."
-    exit 1
+    error_exit "'private_key' was not found in 'cred.json'. Please check your 'cred.json' file."
   fi
   if [[ -z "$saEmail" ]]; then
-    echo "'client_email' was not found in 'cred.json'. Please check your 'cred.json' file."
-    exit 1
+    error_exit "'client_email' was not found in 'cred.json'. Please check your 'cred.json' file."
   fi
   set -e
 
