@@ -48,6 +48,64 @@ if [[ "$(id -u)" -ne 0 ]]; then
   exit 1
 fi
 
+# The administrator account whose per-user (GUI domain) agents/preferences we
+# harden. Defaults to the invoking sudo user; override with ADMIN_USER=name.
+ADMIN_USER="${ADMIN_USER:-${SUDO_USER:-$(stat -f%Su /dev/console)}}"
+ADMIN_UID="$(id -u "$ADMIN_USER" 2>/dev/null || echo "")"
+
+# Telemetry / analytics / ad hostnames. ANALYTICS ONLY — safe to sinkhole. We
+# deliberately DO NOT touch ocsp.apple.com, timestamp.apple.com, the notary
+# service, api.apple-cloudkit.com, developer.apple.com, or
+# appstoreconnect.apple.com — those are load-bearing for signing/notarization.
+HOSTS_MARK_BEGIN="# >>> appcircle-telemetry-block >>>"
+HOSTS_MARK_END="# <<< appcircle-telemetry-block <<<"
+TELEMETRY_DOMAINS=(
+  metrics.apple.com
+  securemetrics.apple.com
+  metrics.icloud.com
+  metrics.mzstatic.com
+  weather-analytics-events.apple.com
+  books-analytics-events.apple.com
+  iadsdk.apple.com
+  api-adservices.apple.com
+  supportmetrics.apple.com
+  xp.apple.com
+)
+
+# System analytics/diagnostics daemons (disabled in system domain). These only
+# collect/submit telemetry — none are required for signing, notarization, or
+# security updates.
+ANALYTICS_DAEMONS=(
+  com.apple.analyticsd
+  com.apple.osanalytics.osanalyticshelper
+  com.apple.SubmitDiagInfo
+  com.apple.audioanalyticsd
+  com.apple.wifianalyticsd
+  com.apple.ecosystemanalyticsd
+  com.apple.geoanalyticsd
+)
+
+# Per-user agents (disabled in gui/<uid>): Siri / Apple Intelligence / phone-home
+# suggestion + media-analysis agents. Safe to disable on a build host.
+USER_AGENTS=(
+  com.apple.assistantd
+  com.apple.Siri.agent
+  com.apple.siriknowledged
+  com.apple.assistant_service
+  com.apple.generativeexperiencesd
+  com.apple.intelligenceflowd
+  com.apple.intelligencecontextd
+  com.apple.intelligenceplatformd
+  com.apple.knowledge-agent
+  com.apple.naturallanguaged
+  com.apple.suggestd
+  com.apple.parsecd
+  com.apple.photoanalysisd
+  com.apple.mediaanalysisd
+  com.apple.ap.adprivacyd
+  com.apple.ap.promotedcontentd
+)
+
 log()  { echo "$LOG_PREFIX $*"; }
 ok()   { echo "$LOG_PREFIX [ OK ] $*"; }
 warn() { echo "$LOG_PREFIX [WARN] $*"; }
@@ -56,6 +114,18 @@ run()  {
     echo "$LOG_PREFIX WOULD RUN: $*"
   else
     eval "$@"
+  fi
+}
+# Run a command as the admin user inside their GUI launchd domain.
+as_user() {
+  if [[ -z "$ADMIN_UID" ]]; then
+    warn "No admin user resolved; skipping per-user setting: $*"
+    return 0
+  fi
+  if [[ "$DRY_RUN" -eq 1 || "$AUDIT_ONLY" -eq 1 ]]; then
+    echo "$LOG_PREFIX WOULD RUN (as $ADMIN_USER): $*"
+  else
+    launchctl asuser "$ADMIN_UID" sudo -u "$ADMIN_USER" "$@" || true
   fi
 }
 
@@ -155,19 +225,64 @@ run "defaults -currentHost write com.apple.screensaver askForPassword -int 1"
 run "defaults -currentHost write com.apple.screensaver askForPasswordDelay -int 0"
 
 # ---------------------------------------------------------------------------
-# SECTION E — Power / energy (CIS 2.10.x)
-# ---------------------------------------------------------------------------
-log "E. Power settings"
-run "pmset -a powernap 0 2>/dev/null || true"   # disable Power Nap
-run "pmset -a womp 0 2>/dev/null || true"        # disable wake for network access
-
-# ---------------------------------------------------------------------------
 # SECTION F — Privacy / analytics (CIS 2.5.x / 2.6.3.x)
 # ---------------------------------------------------------------------------
 log "F. Disabling analytics sharing and personalized ads"
 run "defaults write /Library/Application\\ Support/CrashReporter/DiagnosticMessagesHistory.plist AutoSubmit -bool false"
 run "defaults write /Library/Application\\ Support/CrashReporter/DiagnosticMessagesHistory.plist ThirdPartyDataSubmit -bool false"
 run "defaults write /Library/Preferences/com.apple.SubmitDiagInfo AutoSubmit -bool false 2>/dev/null || true"
+
+# Disable system analytics/diagnostics daemons (effective after reboot). None of
+# these are required for signing, notarization, or security updates.
+log "Disabling system analytics/diagnostics daemons"
+for d in "${ANALYTICS_DAEMONS[@]}"; do
+  run "launchctl disable system/$d 2>/dev/null || true"
+done
+
+# Limit ad tracking / personalization for the admin user.
+log "Disabling personalized ads / limiting ad tracking (user: $ADMIN_USER)"
+as_user defaults write com.apple.AdLib allowApplePersonalizedAdvertising -bool false
+as_user defaults write com.apple.AdLib forceLimitAdTracking -bool true
+
+# ---------------------------------------------------------------------------
+# SECTION F2 — Siri / Apple Intelligence / phone-home agents
+# ---------------------------------------------------------------------------
+log "F2. Disabling Siri / Apple Intelligence / suggestion agents (user: $ADMIN_USER)"
+if [[ -n "$ADMIN_UID" ]]; then
+  for a in "${USER_AGENTS[@]}"; do
+    if [[ "$DRY_RUN" -eq 1 || "$AUDIT_ONLY" -eq 1 ]]; then
+      echo "$LOG_PREFIX WOULD RUN: launchctl disable gui/$ADMIN_UID/$a"
+    else
+      launchctl disable "gui/$ADMIN_UID/$a" 2>/dev/null || true
+      launchctl bootout "gui/$ADMIN_UID/$a" 2>/dev/null || true
+    fi
+  done
+else
+  warn "No admin user resolved; skipping per-user agent disable."
+fi
+
+# ---------------------------------------------------------------------------
+# SECTION F3 — Telemetry domain sinkhole via /etc/hosts
+# ---------------------------------------------------------------------------
+log "F3. Blocking telemetry/analytics domains in /etc/hosts"
+if [[ "$DRY_RUN" -eq 1 || "$AUDIT_ONLY" -eq 1 ]]; then
+  for h in "${TELEMETRY_DOMAINS[@]}"; do echo "$LOG_PREFIX WOULD RUN: block $h"; done
+else
+  # Remove any prior block first (idempotent)
+  if grep -qF "$HOSTS_MARK_BEGIN" /etc/hosts; then
+    sed -i '' "/$(printf '%s' "$HOSTS_MARK_BEGIN" | sed 's/[][\.*^$/]/\\&/g')/,/$(printf '%s' "$HOSTS_MARK_END" | sed 's/[][\.*^$/]/\\&/g')/d" /etc/hosts
+  fi
+  {
+    echo "$HOSTS_MARK_BEGIN"
+    for h in "${TELEMETRY_DOMAINS[@]}"; do
+      echo "0.0.0.0 $h"
+      echo "::1 $h"
+    done
+    echo "$HOSTS_MARK_END"
+  } >> /etc/hosts
+  dscacheutil -flushcache 2>/dev/null || true
+  killall -HUP mDNSResponder 2>/dev/null || true
+fi
 
 # ---------------------------------------------------------------------------
 # SECTION G — Software update policy
