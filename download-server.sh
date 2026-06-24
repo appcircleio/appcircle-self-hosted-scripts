@@ -78,7 +78,7 @@ print_deprecation_warning() {
   echo "WARNING: The Google OAuth token endpoint '$legacyTokenUrl' is deprecated by Google." >&2
   echo "         This script tries it first for backward compatibility and falls back to '$currentTokenUrl' when it cannot be reached." >&2
   echo "         Please make sure the host 'oauth2.googleapis.com' is allowed in your network/firewall policy." >&2
-  echo "         For more information: https://docs.appcircle.io/self-hosted-appcircle/install-server/linux-package/configure-server/integrations-and-access/network-access" >&2
+  echo "         For more information: https://docs.appcircle.io/self-hosted-appcircle/install-server/linux-package/configure-server/integrations-and-access/network-access#if-you-are-an-enterprise-licensed-or-poc-customer-appcircle-server-zip-package" >&2
 }
 
 check_cred_json() {
