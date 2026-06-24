@@ -4,8 +4,19 @@ set -eou pipefail
 credJsonPath="./cred.json"
 gcloudAccessToken=""
 userId=""
-version="0.1.2"
+version="0.1.3"
 preferedPackageVersion=""
+
+# Google OAuth 2.0 token endpoints.
+# The legacy endpoint is deprecated by Google but is still the host that existing
+# self-hosted customers have allow-listed in their network policy. To stay
+# backward compatible we try the legacy endpoint first and fall back to the
+# current endpoint only when the legacy one cannot be reached.
+legacyTokenUrl="https://www.googleapis.com/oauth2/v4/token"
+currentTokenUrl="https://oauth2.googleapis.com/token"
+# Holds the audience used for the JWT currently being signed. It must always
+# match the token endpoint the assertion is sent to, otherwise Google rejects it.
+tokenAud="$legacyTokenUrl"
 
 version_info() {
   echo "Appcircle Server Package Downloader $version"
@@ -63,6 +74,12 @@ parse_arguments() {
   done
 }
 
+print_deprecation_warning() {
+  echo "WARNING: The Google OAuth token endpoint '$legacyTokenUrl' is deprecated by Google." >&2
+  echo "         This script tries it first for backward compatibility and falls back to '$currentTokenUrl' when it cannot be reached." >&2
+  echo "         Please make sure the host 'oauth2.googleapis.com' is allowed in your network/firewall policy." >&2
+}
+
 check_cred_json() {
   if ! [[ -f $credJsonPath ]]; then
     echo "'cred.json' file doesn't exist in '$(pwd)'."
@@ -85,12 +102,41 @@ extract_user_id() {
 authenticate_gcs() {
   credJsonPath=$1
   scope=$2
-  create_jwt_google_cloud "$credJsonPath" "$scope"
-  jwtToken="${jwtGoogleCloud}"
-  gcloudAccessToken=$(curl -s -X POST https://www.googleapis.com/oauth2/v4/token \
-    --data-urlencode 'grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer' \
-    --data-urlencode "assertion=$jwtToken" |
-    grep -oP '"access_token":"\K[^"]+')
+
+  gcloudAccessToken=""
+  for tokenUrl in "$legacyTokenUrl" "$currentTokenUrl"; do
+    # The JWT 'aud' claim must equal the token endpoint the assertion is posted
+    # to, so the JWT is rebuilt and re-signed for each endpoint we try.
+    tokenAud="$tokenUrl"
+    create_jwt_google_cloud "$credJsonPath" "$scope"
+    jwtToken="${jwtGoogleCloud}"
+
+    set +e
+    tokenResponse=$(curl -s --connect-timeout 30 -X POST "$tokenUrl" \
+      --data-urlencode 'grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer' \
+      --data-urlencode "assertion=$jwtToken")
+    curlStatus=$?
+    set -e
+
+    if [[ "$curlStatus" -ne 0 ]]; then
+      echo "WARNING: Could not reach Google OAuth token endpoint '$tokenUrl' (curl exit $curlStatus). Trying the next endpoint if available." >&2
+      continue
+    fi
+
+    set +e
+    gcloudAccessToken=$(echo "$tokenResponse" | grep -oP '"access_token":"\K[^"]+')
+    set -e
+    if [[ -n "$gcloudAccessToken" ]]; then
+      break
+    fi
+    echo "WARNING: Google OAuth token endpoint '$tokenUrl' did not return an access token. Trying the next endpoint if available." >&2
+  done
+
+  if [[ -z "$gcloudAccessToken" ]]; then
+    echo "Failed to obtain a Google Cloud access token from both the legacy ('$legacyTokenUrl') and current ('$currentTokenUrl') OAuth endpoints."
+    echo "Please verify your 'cred.json' and that one of these hosts is reachable from your network."
+    exit 1
+  fi
 }
 
 download_appcircle_server_package() {
@@ -151,7 +197,7 @@ create_jwt_google_cloud() {
 {
     "iss": "$saEmail",
     "scope": "$scope",
-    "aud": "https://www.googleapis.com/oauth2/v4/token",
+    "aud": "$tokenAud",
     "exp": $exp,
     "iat": $iat
 }
@@ -173,6 +219,7 @@ base64stream() {
 main() {
   parse_arguments "$@"
   suffix_version_option
+  print_deprecation_warning
   echo "Downloading the Appcircle server zip package..."
   check_cred_json
   extract_user_id
