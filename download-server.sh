@@ -115,7 +115,7 @@ authenticate_gcs() {
     jwtToken="${jwtGoogleCloud}"
 
     set +e
-    tokenResponse=$(curl -s --connect-timeout 30 -X POST "$tokenUrl" \
+    tokenResponse=$(curl -sS --connect-timeout 30 --max-time 60 -X POST "$tokenUrl" \
       --data-urlencode 'grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer' \
       --data-urlencode "assertion=$jwtToken")
     curlStatus=$?
@@ -127,7 +127,7 @@ authenticate_gcs() {
     fi
 
     set +e
-    gcloudAccessToken=$(echo "$tokenResponse" | grep -oP '"access_token":"\K[^"]+')
+    gcloudAccessToken=$(echo "$tokenResponse" | grep -oP '"access_token"\s*:\s*"\K[^"]+')
     set -e
     if [[ -n "$gcloudAccessToken" ]]; then
       echo "Authenticated with Google using OAuth token endpoint '$tokenUrl'."
