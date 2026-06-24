@@ -130,6 +130,7 @@ authenticate_gcs() {
     gcloudAccessToken=$(echo "$tokenResponse" | grep -oP '"access_token":"\K[^"]+')
     set -e
     if [[ -n "$gcloudAccessToken" ]]; then
+      echo "Authenticated with Google using OAuth token endpoint '$tokenUrl'."
       break
     fi
     echo "WARNING: Google OAuth token endpoint '$tokenUrl' did not return an access token. Trying the next endpoint if available." >&2
