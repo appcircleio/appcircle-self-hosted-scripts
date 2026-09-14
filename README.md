@@ -99,21 +99,28 @@ Keep it accurate.
 | --- | --- |
 | `download-runner.sh` | `https://cdn.appcircle.io/self-hosted/download-runner.sh` |
 | `harden-host.sh` | `https://cdn.appcircle.io/self-hosted/harden-macos-host.sh` |
-| `run.sh` | `https://cdn.appcircle.io/self-hosted/run.sh` |
+| `run.sh` | `https://cdn.appcircle.io/self-hosted/run-<VERSION>.sh` |
 | `runner-service.sh` | `https://cdn.appcircle.io/self-hosted/runner-service.sh` |
 | `check-runner-host.sh` | `https://cdn.appcircle.io/self-hosted/check-runner-host.sh` |
 
 `download-server.sh` is not published to the CDN; it is delivered with the
 server package instead.
 
-`run.sh` must also be mirrored to
-`https://storage.googleapis.com/appcircle-dev-common/self-hosted/run.sh`. That
-URL is hardcoded in already-published documentation and in hosts installed
-before the CDN existed, so moving it would break them.
+Two of these rows are renames rather than plain copies, and nothing enforces
+either one, so verify the published URL after every upload.
 
-Note the rename in the second row. `harden-host.sh` is published under a
-different name than it has here, and nothing enforces that, so verify the
-published URL after every upload.
+`harden-host.sh` is published under a different name than it has here. This was
+recorded nowhere before, and `cdn.appcircle.io/self-hosted/harden-host.sh`
+returns 404 while `harden-macos-host.sh` serves the file.
+
+`run.sh` is published **per version**, not under a fixed name, because a given
+`run.sh` is only guaranteed to work with the macOS VM image it shipped with.
+Take `VERSION` from the top of the script, so 1.9.0 is published as
+`run-1.9.0.sh`, and add a tab for it in the
+[macOS VM setup](https://docs.appcircle.io/self-hosted-appcircle/self-hosted-runner/runner-vm-setup)
+page next to the image version it belongs to. A bare `run.sh` also exists on
+the old storage bucket, pinned at 1.0.2 and reachable by hosts installed before
+this convention; leave it in place, it is not the current download path.
 
 ## Testing
 
