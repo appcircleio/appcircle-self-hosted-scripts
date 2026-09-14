@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-VERSION="1.9.0"
+VERSION="1.9.1"
 if [ $# -ne 1 ]; then
     # print version
     echo "v$VERSION"
@@ -235,7 +235,11 @@ cleanupOrphans
 
         deleteVM
     done
-} > stdout.log 2>stderr.log
+# Append rather than truncate. The service restarts run.sh on a non-zero exit,
+# and truncating here would erase the output of the failure that caused the
+# restart, leaving a crash loop with no evidence. `runner-service.sh install`
+# resets these files, which is what bounds their growth.
+} >> stdout.log 2>> stderr.log
 
 # if we see the ".stop" file, the `while` loop is broken and then this code is
 # run.  This places a .stopped file in the directory of the script to show that

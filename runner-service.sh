@@ -105,21 +105,43 @@ cmd_install() {
   local runner_user
   runner_user="$(resolve_runner_user)"
 
+  # run.sh derives the Xcode image directory and the keychain path from $HOME.
+  # launchd does populate HOME from the account named by UserName, but relying
+  # on that makes a silent wrong-account failure possible if the job is ever
+  # started another way, and run.sh uses `set -u`, so an unset HOME aborts it.
+  # Resolve the home directory here and declare it in the plist instead.
+  local runner_home
+  runner_home="$(dscl . -read "/Users/${runner_user}" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+  [ -d "$runner_home" ] || die "Could not resolve the home directory of '${runner_user}'."
+
   [ -f "${RUNNER_DIR}/run.sh" ] || die "run.sh not found in ${RUNNER_DIR}"
   [ -x "${RUNNER_DIR}/run.sh" ] || die "run.sh is not executable. Run: chmod u+x ${RUNNER_DIR}/run.sh"
 
   assert_xml_safe "$RUNNER_DIR"
   assert_xml_safe "$vm"
+  assert_xml_safe "$runner_home"
 
   # Base image check is advisory: tart state is per-user, so query it as the
   # runner account rather than as root.
-  if sudo -u "$runner_user" command -v tart >/dev/null 2>&1; then
-    if ! sudo -u "$runner_user" tart list 2>/dev/null | awk '{print $2}' | grep -qx "$vm"; then
+  #
+  # Resolve tart to an absolute path first. `sudo` runs a binary, so it cannot
+  # run the `command` builtin, and it resets PATH, so a bare `sudo -u x tart`
+  # would not find a Homebrew install either. Both forms fail whether or not
+  # tart is present, which turns an advisory check into a permanent warning.
+  local tart_bin=""
+  if [ -x "${BREW_PREFIX}/bin/tart" ]; then
+    tart_bin="${BREW_PREFIX}/bin/tart"
+  else
+    tart_bin="$(command -v tart 2>/dev/null || true)"
+  fi
+
+  if [ -n "$tart_bin" ]; then
+    if ! sudo -u "$runner_user" "$tart_bin" list 2>/dev/null | awk '{print $2}' | grep -qx "$vm"; then
       warn "Base image '${vm}' was not found in 'tart list' for user '${runner_user}'."
       warn "Install will continue; the service will wait for it at startup."
     fi
   else
-    warn "tart is not on PATH for user '${runner_user}'. Install it before starting the service."
+    warn "tart was not found at ${BREW_PREFIX}/bin/tart or on PATH. Install it before starting the service."
   fi
 
   if [ -f "$PLIST" ]; then
@@ -164,6 +186,8 @@ cmd_install() {
         <string>${BREW_PREFIX}</string>
         <key>HOMEBREW_CELLAR</key>
         <string>${BREW_PREFIX}/Cellar</string>
+        <key>HOME</key>
+        <string>${runner_home}</string>
     </dict>
 
     <key>UserName</key>
@@ -199,8 +223,13 @@ EOF
   chmod 644 "$PLIST"
 
   local f
+  # run.sh appends to stdout.log and stderr.log rather than truncating, so that
+  # a crash loop does not erase the diagnostics from the failure that caused it.
+  # Install is therefore the point where the logs are reset, which also bounds
+  # their growth.
+  local f
   for f in service-stdout.log service-stderr.log stdout.log stderr.log; do
-    touch "${RUNNER_DIR}/${f}"
+    : > "${RUNNER_DIR}/${f}"
     chown "${runner_user}:staff" "${RUNNER_DIR}/${f}"
   done
 
@@ -306,7 +335,6 @@ cmd_stop() {
       --now)     now=1 ;;
       --disable) disable=1 ;;
       --timeout) shift; timeout="${1:-1800}" ;;
-      "")        ;;
       *)         die "Unknown option for stop: $1" ;;
     esac
     shift || true
@@ -357,7 +385,7 @@ cmd_stop() {
 # ------------------------------------------------------------------ restart
 cmd_restart() {
   require_root
-  cmd_stop "${1:-}"
+  cmd_stop "$@"
   cmd_start
 }
 
@@ -427,8 +455,8 @@ case "${1:-}" in
   install)   shift; cmd_install "${1:-}" ;;
   uninstall) cmd_uninstall ;;
   start)     cmd_start ;;
-  stop)      shift; cmd_stop "${1:-}" ;;
-  restart)   shift; cmd_restart "${1:-}" ;;
+  stop)      shift; cmd_stop "$@" ;;
+  restart)   shift; cmd_restart "$@" ;;
   status)    cmd_status ;;
   logs)      cmd_logs ;;
   -h|--help|help|"") usage ;;
