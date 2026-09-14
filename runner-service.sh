@@ -110,8 +110,14 @@ cmd_install() {
   # on that makes a silent wrong-account failure possible if the job is ever
   # started another way, and run.sh uses `set -u`, so an unset HOME aborts it.
   # Resolve the home directory here and declare it in the plist instead.
+  #
+  # Strip the attribute name rather than taking the second field: dscl prints
+  # "NFSHomeDirectory: /Users/foo", so `awk '{print $2}'` would cut a home
+  # directory containing a space down to its first word. The -d test below
+  # catches any other parse failure loudly instead of silently using "".
   local runner_home
-  runner_home="$(dscl . -read "/Users/${runner_user}" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+  runner_home="$(dscl . -read "/Users/${runner_user}" NFSHomeDirectory 2>/dev/null \
+    | sed -n 's/^NFSHomeDirectory: //p')"
   [ -d "$runner_home" ] || die "Could not resolve the home directory of '${runner_user}'."
 
   [ -f "${RUNNER_DIR}/run.sh" ] || die "run.sh not found in ${RUNNER_DIR}"

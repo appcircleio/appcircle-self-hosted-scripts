@@ -27,7 +27,11 @@ version="1.0.0"
 APPCIRCLE_URL="${APPCIRCLE_URL:-https://my.appcircle.io}"
 RUNNER_USER="${RUNNER_USER:-$(id -un)}"
 RUNNER_UID="$(id -u "$RUNNER_USER" 2>/dev/null || id -u)"
-RUNNER_HOME="$(dscl . -read "/Users/$RUNNER_USER" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+# Strip the attribute name rather than taking the second field: dscl prints
+# "NFSHomeDirectory: /Users/foo", so `awk '{print $2}'` would cut a home
+# directory containing a space down to its first word.
+RUNNER_HOME="$(dscl . -read "/Users/$RUNNER_USER" NFSHomeDirectory 2>/dev/null \
+  | sed -n 's/^NFSHomeDirectory: //p')"
 [ -d "$RUNNER_HOME" ] || RUNNER_HOME="$HOME"
 SKIP_NET="${SKIP_NET:-0}"
 
