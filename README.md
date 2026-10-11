@@ -107,7 +107,7 @@ Keep it accurate.
 
 | Repository file | Published as |
 | --- | --- |
-| `download-runner.sh` | `https://cdn.appcircle.io/self-hosted/download-runner.sh` |
+| `download-runner.sh` | `https://cdn.appcircle.io/self-hosted/download-runner.sh`, and the same file as `download-runner-beta.sh` while older docs and customer automation still use that name |
 | `harden-host.sh` | `https://cdn.appcircle.io/self-hosted/harden-macos-host.sh` |
 | `run.sh` | `https://cdn.appcircle.io/self-hosted/run-<VERSION>.sh` |
 | `runner-service.sh` | `https://cdn.appcircle.io/self-hosted/runner-service.sh` |
