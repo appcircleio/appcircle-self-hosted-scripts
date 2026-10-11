@@ -4,7 +4,7 @@ retryAttempt=1
 retryAttemptOrigin="${retryAttempt}"
 retryInterval=30
 retryMaxLimit=10
-version=1.0.2
+version=1.1.0-beta
 
 mkVmDir() {
   mkdir -p "${HOME}/.tart/vms/${vmImageName}"
@@ -118,7 +118,12 @@ extractXcodeFile() {
 extractFile() {
   fileToExtract=$1
   extractTargetPath=$2
-  tar -zxf "${fileToExtract}" --directory "${extractTargetPath}"
+  if ! pigz --version &>/dev/null; then
+    echo "INFO: pigz command not found. Using the default gzip for extraction."
+    tar -zxf "$fileToExtract" --directory "$extractTargetPath"
+  else
+    pigz -cvdp 4 "$fileToExtract" | tar xvf - --directory "$extractTargetPath"
+  fi
   if [[ "$?" != 0 ]]; then
     echo "Failed to extract the Tar file. $fileToExtract" >&2
     exit 1
