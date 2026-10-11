@@ -4,7 +4,20 @@ retryAttempt=1
 retryAttemptOrigin="${retryAttempt}"
 retryInterval=30
 retryMaxLimit=10
-version=1.1.0-beta
+version=1.2.0
+defaultBaseUrl="https://storage.googleapis.com/appcircle-dev-common/self-hosted"
+# AC_RUNNER_IMAGE_BASE_URL points the downloads to a mirror of the default location, such as an artifact proxy.
+baseUrl="${AC_RUNNER_IMAGE_BASE_URL:-$defaultBaseUrl}"
+baseUrl="${baseUrl%/}"
+
+isDefaultBaseUrl() {
+  [[ "$baseUrl" == "$defaultBaseUrl" ]]
+}
+
+maskedBaseUrl() {
+  # Hide credentials if they were put into the URL.
+  printf '%s' "$baseUrl" | sed -E 's#://[^/@]+@#://***@#'
+}
 
 mkVmDir() {
   mkdir -p "${HOME}/.tart/vms/${vmImageName}"
@@ -25,6 +38,9 @@ printHelp() {
   printf '\t%s\n' "runner-version: Specify the Appcircle runner version optionally."
   printf '\t%s\n' "-h, --help: Prints help."
   printf '\t%s\n' "-v, --version: Prints version."
+  printf '%s\n' "Environment:"
+  printf '\t%s\n' "AC_RUNNER_IMAGE_BASE_URL: Download from this location instead of Appcircle, such as an artifact proxy. The runner version is required when it is set."
+  printf '%s\n' "Credentials for the download location are read from ~/.netrc when it has an entry for that host."
 }
 
 parseArguments() {
@@ -46,6 +62,11 @@ parseArguments() {
   fi
 
   runnerVersion=$1
+  if [[ -z $runnerVersion ]] && ! isDefaultBaseUrl; then
+    # The latest image is found through the Google Cloud Storage API, which a mirror does not serve.
+    echo "AC_RUNNER_IMAGE_BASE_URL is set, so the runner version is required. For example: $0 260914" >&2
+    exit 1
+  fi
   if [[ -z $runnerVersion ]]; then
     vmImageName=$(getTheLatestVmImageName)
     xcodeImageName=$(getTheLatestXcodeImageName)
@@ -78,7 +99,7 @@ getTheLatestFile() {
 
 downloadFileFromBucket() {
   fileToDownload=$1
-  curl -f -L -O -C - "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$fileToDownload"
+  curl --netrc-optional -f -L -O -C - "${baseUrl}/$fileToDownload"
   if [[ "$?" != 0 ]]; then
     if [[ "$retryAttempt" -gt "$retryMaxLimit" ]]; then
       echo "Failed to download $fileToDownload in $((retryAttempt - 1)) attempt. Please check your network." >&2
@@ -131,21 +152,51 @@ extractFile() {
   echo "$fileToExtract is extracted to the $extractTargetPath"
 }
 
-checkMd5SumVm() {
-  checkMd5Sum "$vmImageFile"
+verifyChecksumVm() {
+  verifyChecksum "$vmImageFile"
 }
 
-checkMd5SumXcode() {
-  checkMd5Sum "$xcodeImageFile"
+verifyChecksumXcode() {
+  verifyChecksum "$xcodeImageFile"
+}
+
+verifyChecksum() {
+  fileToCheck=$1
+  if ! validMd5=$(getValidMd5 "$fileToCheck"); then
+    exit 1
+  fi
+  checkMd5Sum "$fileToCheck" "$validMd5"
+}
+
+# Prints the expected MD5 of the file: from the <file>.md5 file next to it, or, for the default
+# location only, from the ETag header. A mirror serves its own ETag, so it must serve <file>.md5.
+getValidMd5() {
+  fileToCheck=$1
+  checksum=$(curl --netrc-optional -fsSL "${baseUrl}/${fileToCheck}.md5" 2>/dev/null | awk 'NR == 1 { print tolower($1) }')
+  if [[ -n "$checksum" ]]; then
+    if [[ ! "$checksum" =~ ^[0-9a-f]{32}$ ]]; then
+      echo "The checksum file ${fileToCheck}.md5 doesn't contain a valid MD5 checksum." >&2
+      return 1
+    fi
+    echo "$checksum"
+    return 0
+  fi
+  if isDefaultBaseUrl; then
+    checksum=$(curl -fsSL -I "${defaultBaseUrl}/$fileToCheck" | grep -i -w "etag" | cut -d '"' -f 2)
+    if [[ -z "$checksum" ]]; then
+      echo "Failed to get the md5 hash of origin file. Please check your network." >&2
+      return 1
+    fi
+    echo "$checksum"
+    return 0
+  fi
+  echo "Failed to download the checksum file ${fileToCheck}.md5 from $(maskedBaseUrl). The download location must serve it next to $fileToCheck." >&2
+  return 1
 }
 
 checkMd5Sum() {
   fileToCheck=$1
-  validMd5=$(curl -fsSL -I "https://storage.googleapis.com/appcircle-dev-common/self-hosted/$fileToCheck" | grep -i -w "etag" | cut -d '"' -f 2)
-  if [[ $? -ne 0 ]]; then
-    echo "Failed to get the md5 hash of origin file. Please check your network." >&2
-    exit 1
-  fi
+  validMd5=$2
   echo "Valid MD5: $validMd5"
   md5Cli=""
   os=$(uname -s)
@@ -170,11 +221,12 @@ checkMd5Sum() {
 main() {
   parseArguments "$@"
   echo "$vmImageName image with $xcodeImageName Xcodes will be installed..."
+  echo "Download location: $(maskedBaseUrl)"
   echo "It may take some time to complete with respect to your network speed. Please wait patiently..."
   downloadVmImage
   downloadXcodeImages
-  checkMd5SumVm
-  checkMd5SumXcode
+  verifyChecksumVm
+  verifyChecksumXcode
   mkVmDir
   mkXcodeDir
   extractVmFile
