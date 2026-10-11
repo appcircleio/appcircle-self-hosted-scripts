@@ -14,6 +14,16 @@ The download and unzip takes so much time. So this script handles manual tasks f
 
 For detailed usage, check the [docs](https://docs.appcircle.io/self-hosted-appcircle/self-hosted-runner/runner-vm-setup#download-macos-vm).
 
+By default the images are downloaded from `https://storage.googleapis.com/appcircle-dev-common/self-hosted`. To download them through a mirror of that location, such as an artifact proxy on a host without internet access, set `AC_RUNNER_IMAGE_BASE_URL`:
+
+```bash
+AC_RUNNER_IMAGE_BASE_URL="https://nexus.example.com/repository/appcircle-gcs" ./download-runner.sh 260914
+```
+
+- The image version is required with a mirror, because the latest image is found through the Google Cloud Storage API.
+- Credentials for the mirror are read from `~/.netrc` when it has an entry for the mirror host.
+- Each image is verified with the `<file>.sha256` file next to it. With the default location the script falls back to the MD5 checksum in the object's `ETag` while the `.sha256` files are not published. With a mirror there is no fallback, because a mirror serves its own `ETag`.
+
 ### `download-server.sh`
 
 You can use that script to download the latest Appcircle server package.
@@ -122,6 +132,17 @@ page next to the image version it belongs to. A bare `run.sh` also exists on
 the old storage bucket, pinned at 1.0.2 and reachable by hosts installed before
 this convention; leave it in place, it is not the current download path.
 
+### macOS VM and Xcode images
+
+The images are not built from this repository, but `download-runner.sh` depends on how they are published. Upload a SHA-256 checksum file next to every `macOS_<version>.tar.gz` and `xcodes_<version>.tar.gz` in `gs://appcircle-dev-common/self-hosted/`, in the format `shasum -a 256` prints:
+
+```bash
+shasum -a 256 macOS_260914.tar.gz > macOS_260914.tar.gz.sha256
+shasum -a 256 xcodes_260914.tar.gz > xcodes_260914.tar.gz.sha256
+```
+
+Without these files the script cannot verify downloads made through a mirror (`AC_RUNNER_IMAGE_BASE_URL`), and it stops.
+
 ## Testing
 
 ### Environment Information
@@ -156,6 +177,13 @@ OK
 
 ### Test Cases
 
+- `download-runner-mirror-tests.sh` runs `download-runner.sh` against a local mirror (`tests/mirror-server.py`) and needs no internet access, only `python3`:
+  - **testMirrorDownloadWithChecksum**: downloads, verifies with the `.sha256` files and extracts through the mirror; a trailing slash in the URL is accepted.
+  - **testMirrorRequiresVersion**: fails before downloading when no version is given.
+  - **testMirrorChecksumMismatch**: fails when the checksum does not match.
+  - **testMirrorMissingChecksumFile**: fails when the mirror does not serve the `.sha256` file.
+  - **testMirrorWithNetrcCredentials**: fails without credentials and succeeds with them in `~/.netrc`.
+  - **testMirrorUrlHidesCredentials**: credentials in the URL work and are not printed.
 - `download-runner-tests.sh`
   - **testRunnerDownload**
     - Valid remote MD5 for macOS images should be found.
