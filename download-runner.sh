@@ -162,63 +162,41 @@ verifyChecksumXcode() {
 
 verifyChecksum() {
   fileToCheck=$1
-  if checkSha256Sum "$fileToCheck"; then
-    return 0
+  if ! validMd5=$(getValidMd5 "$fileToCheck"); then
+    exit 1
   fi
-  # Only the default location serves the MD5 checksum as the ETag header. A mirror serves its own ETag.
-  if isDefaultBaseUrl; then
-    echo "INFO: No SHA-256 checksum file was found for $fileToCheck. Checking the MD5 checksum instead."
-    checkMd5Sum "$fileToCheck"
-    return 0
-  fi
-  echo "Failed to download the checksum file ${fileToCheck}.sha256 from $(maskedBaseUrl). The download location must serve it next to $fileToCheck." >&2
-  exit 1
+  checkMd5Sum "$fileToCheck" "$validMd5"
 }
 
-# Returns 1 if the checksum file can't be downloaded. Exits if the checksum doesn't match.
-checkSha256Sum() {
+# Prints the expected MD5 of the file: from the <file>.md5 file next to it, or, for the default
+# location only, from the ETag header. A mirror serves its own ETag, so it must serve <file>.md5.
+getValidMd5() {
   fileToCheck=$1
-  checksumFile="${fileToCheck}.sha256"
-  rm -f "$checksumFile"
-  if ! curl --netrc-optional -fsSL -o "$checksumFile" "${baseUrl}/${checksumFile}"; then
-    rm -f "$checksumFile"
-    return 1
+  checksum=$(curl --netrc-optional -fsSL "${baseUrl}/${fileToCheck}.md5" 2>/dev/null | awk 'NR == 1 { print tolower($1) }')
+  if [[ -n "$checksum" ]]; then
+    if [[ ! "$checksum" =~ ^[0-9a-f]{32}$ ]]; then
+      echo "The checksum file ${fileToCheck}.md5 doesn't contain a valid MD5 checksum." >&2
+      return 1
+    fi
+    echo "$checksum"
+    return 0
   fi
-  validSha256=$(awk 'NR == 1 { print tolower($1) }' "$checksumFile")
-  rm -f "$checksumFile"
-  if [[ ! "$validSha256" =~ ^[0-9a-f]{64}$ ]]; then
-    echo "The checksum file $checksumFile doesn't contain a valid SHA-256 checksum." >&2
-    exit 1
+  if isDefaultBaseUrl; then
+    checksum=$(curl -fsSL -I "${defaultBaseUrl}/$fileToCheck" | grep -i -w "etag" | cut -d '"' -f 2)
+    if [[ -z "$checksum" ]]; then
+      echo "Failed to get the md5 hash of origin file. Please check your network." >&2
+      return 1
+    fi
+    echo "$checksum"
+    return 0
   fi
-  echo "Valid SHA-256: $validSha256"
-  sha256Cli=()
-  os=$(uname -s)
-  if [[ $os == "Darwin" ]]; then
-    sha256Cli=(shasum -a 256)
-  elif [[ $os == "Linux" ]]; then
-    sha256Cli=(sha256sum)
-  fi
-  if [[ ${#sha256Cli[@]} -eq 0 ]] || ! command -v "${sha256Cli[0]}" &>/dev/null; then
-    echo "No SHA-256 command was found." >&2
-    exit 1
-  fi
-  echo "Calculating the SHA-256 checksum of $fileToCheck. It may take a few minutes..."
-  downloadedSha256=$("${sha256Cli[@]}" "$fileToCheck" | awk '{ print tolower($1) }')
-  echo "Downloaded File's SHA-256: $downloadedSha256"
-  if [[ "$downloadedSha256" != "$validSha256" ]]; then
-    echo "Your downloaded file is corrupted. Delete the $fileToCheck and run the script again." >&2
-    exit 1
-  fi
-  echo "Your downloaded file $fileToCheck is valid."
+  echo "Failed to download the checksum file ${fileToCheck}.md5 from $(maskedBaseUrl). The download location must serve it next to $fileToCheck." >&2
+  return 1
 }
 
 checkMd5Sum() {
   fileToCheck=$1
-  validMd5=$(curl -fsSL -I "${defaultBaseUrl}/$fileToCheck" | grep -i -w "etag" | cut -d '"' -f 2)
-  if [[ $? -ne 0 ]]; then
-    echo "Failed to get the md5 hash of origin file. Please check your network." >&2
-    exit 1
-  fi
+  validMd5=$2
   echo "Valid MD5: $validMd5"
   md5Cli=""
   os=$(uname -s)

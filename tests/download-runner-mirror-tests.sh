@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Tests download-runner.sh with AC_RUNNER_IMAGE_BASE_URL against a local mirror.
-# No internet access is needed. Requires python3.
+# No internet access is needed. Requires python3 and macOS (md5).
 
 source ./tests/shunit2-setup.sh
 
@@ -10,7 +10,7 @@ testMirrorDownloadWithChecksum() {
   runDownload "${mirrorUrl}/" "test1"
 
   assertEquals "Script should succeed." "0" "$exitCode"
-  assertContains "SHA-256 checksum should be read from the mirror." "$(cat "$outputFile")" "Valid SHA-256: "
+  assertContains "MD5 checksum should be read from the mirror." "$(cat "$outputFile")" "Valid MD5: $(md5 -q "${mirrorDir}/macOS_test1.tar.gz")"
   assertContains "Script output should contain success log." "$(cat "$outputFile")" "The Appcircle runner macOS VM and Xcode images have been installed successfully"
   assertTrue "macOS image should be extracted into the tart VMs folder." "[ -f '${homeDir}/.tart/vms/macOS_test1/config.json' ]"
   assertTrue "Xcode images should be extracted into the images folder." "[ -f '${homeDir}/images/xcode.1.0.dmg' ]"
@@ -26,7 +26,7 @@ testMirrorRequiresVersion() {
 }
 
 testMirrorChecksumMismatch() {
-  printf '%064d  macOS_test1.tar.gz\n' 0 >"${mirrorDir}/macOS_test1.tar.gz.sha256"
+  printf '%032d  macOS_test1.tar.gz\n' 0 >"${mirrorDir}/macOS_test1.tar.gz.md5"
   startMirror ""
   runDownload "$mirrorUrl" "test1"
 
@@ -35,12 +35,12 @@ testMirrorChecksumMismatch() {
 }
 
 testMirrorMissingChecksumFile() {
-  rm -f "${mirrorDir}/xcodes_test1.tar.gz.sha256"
+  rm -f "${mirrorDir}/xcodes_test1.tar.gz.md5"
   startMirror ""
   runDownload "$mirrorUrl" "test1"
 
   assertEquals "Script should fail." "1" "$exitCode"
-  assertContains "Script should name the missing checksum file." "$(cat "$outputFile")" "Failed to download the checksum file xcodes_test1.tar.gz.sha256"
+  assertContains "Script should name the missing checksum file." "$(cat "$outputFile")" "Failed to download the checksum file xcodes_test1.tar.gz.md5"
 }
 
 testMirrorWithNetrcCredentials() {
@@ -74,7 +74,7 @@ createImages() {
   tar -czf "${mirrorDir}/macOS_${imageVersion}.tar.gz" -C "${workDir}/src/vm" .
   tar -czf "${mirrorDir}/xcodes_${imageVersion}.tar.gz" -C "${workDir}/src/xcodes" .
   for image in macOS xcodes; do
-    (cd "$mirrorDir" && shasum -a 256 "${image}_${imageVersion}.tar.gz" >"${image}_${imageVersion}.tar.gz.sha256")
+    printf '%s  %s\n' "$(md5 -q "${mirrorDir}/${image}_${imageVersion}.tar.gz")" "${image}_${imageVersion}.tar.gz" >"${mirrorDir}/${image}_${imageVersion}.tar.gz.md5"
   done
 }
 

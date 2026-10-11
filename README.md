@@ -22,7 +22,7 @@ AC_RUNNER_IMAGE_BASE_URL="https://nexus.example.com/repository/appcircle-gcs" ./
 
 - The image version is required with a mirror, because the latest image is found through the Google Cloud Storage API.
 - Credentials for the mirror are read from `~/.netrc` when it has an entry for the mirror host.
-- Each image is verified with the `<file>.sha256` file next to it. With the default location the script falls back to the MD5 checksum in the object's `ETag` while the `.sha256` files are not published. With a mirror there is no fallback, because a mirror serves its own `ETag`.
+- Each image is verified with the MD5 checksum in the `<file>.md5` file next to it. With the default location the script falls back to the MD5 checksum in the object's `ETag` while the `.md5` files are not published. With a mirror there is no fallback, because a mirror serves its own `ETag`.
 
 ### `download-server.sh`
 
@@ -134,11 +134,13 @@ this convention; leave it in place, it is not the current download path.
 
 ### macOS VM and Xcode images
 
-The images are not built from this repository, but `download-runner.sh` depends on how they are published. Upload a SHA-256 checksum file next to every `macOS_<version>.tar.gz` and `xcodes_<version>.tar.gz` in `gs://appcircle-dev-common/self-hosted/`, in the format `shasum -a 256` prints:
+The images are not built from this repository, but `download-runner.sh` depends on how they are published. Upload an MD5 checksum file next to every `macOS_<version>.tar.gz` and `xcodes_<version>.tar.gz` in `gs://appcircle-dev-common/self-hosted/`, in the format `md5sum` prints (`<checksum>  <file name>`). Cloud Storage already keeps the MD5 of each object, so the file can be written from the object metadata without downloading the image:
 
 ```bash
-shasum -a 256 macOS_260914.tar.gz > macOS_260914.tar.gz.sha256
-shasum -a 256 xcodes_260914.tar.gz > xcodes_260914.tar.gz.sha256
+B=gs://appcircle-dev-common/self-hosted
+f=macOS_260914.tar.gz
+printf '%s  %s\n' "$(gcloud storage objects describe "$B/$f" --format='value(md5_hash)' | base64 -d | xxd -p)" "$f" > "$f.md5"
+gcloud storage cp --no-clobber --content-type=text/plain "$f.md5" "$B/"
 ```
 
 Without these files the script cannot verify downloads made through a mirror (`AC_RUNNER_IMAGE_BASE_URL`), and it stops.
@@ -177,11 +179,11 @@ OK
 
 ### Test Cases
 
-- `download-runner-mirror-tests.sh` runs `download-runner.sh` against a local mirror (`tests/mirror-server.py`) and needs no internet access, only `python3`:
-  - **testMirrorDownloadWithChecksum**: downloads, verifies with the `.sha256` files and extracts through the mirror; a trailing slash in the URL is accepted.
+- `download-runner-mirror-tests.sh` runs `download-runner.sh` against a local mirror (`tests/mirror-server.py`) and needs no internet access, only macOS and `python3`:
+  - **testMirrorDownloadWithChecksum**: downloads, verifies with the `.md5` files and extracts through the mirror; a trailing slash in the URL is accepted.
   - **testMirrorRequiresVersion**: fails before downloading when no version is given.
   - **testMirrorChecksumMismatch**: fails when the checksum does not match.
-  - **testMirrorMissingChecksumFile**: fails when the mirror does not serve the `.sha256` file.
+  - **testMirrorMissingChecksumFile**: fails when the mirror does not serve the `.md5` file.
   - **testMirrorWithNetrcCredentials**: fails without credentials and succeeds with them in `~/.netrc`.
   - **testMirrorUrlHidesCredentials**: credentials in the URL work and are not printed.
 - `download-runner-tests.sh`
