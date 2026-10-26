@@ -4,7 +4,7 @@ set -eou pipefail
 credJsonPath="./cred.json"
 gcloudAccessToken=""
 userId=""
-version="0.1.4"
+version="0.1.5"
 preferedPackageVersion=""
 
 # Google OAuth 2.0 token endpoints.
@@ -246,7 +246,8 @@ main() {
   echo "You can now extract the package and follow the instructions in the setup documents."
 }
 
-# Run only when executed, so the tests can source the functions.
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+# Run only when executed, so the tests can source the functions. Piped into
+# bash (curl ... | bash, as the docs do), BASH_SOURCE is empty, so fall back to $0.
+if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then
   main "$@"
 fi
