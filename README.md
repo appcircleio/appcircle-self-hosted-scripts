@@ -14,6 +14,16 @@ The download and unzip takes so much time. So this script handles manual tasks f
 
 For detailed usage, check the [docs](https://docs.appcircle.io/self-hosted-appcircle/self-hosted-runner/runner-vm-setup#download-macos-vm).
 
+By default the images are downloaded from `https://storage.googleapis.com/appcircle-dev-common/self-hosted`. To download them through a mirror of that location, such as an artifact proxy on a host without internet access, set `AC_RUNNER_IMAGE_BASE_URL`:
+
+```bash
+AC_RUNNER_IMAGE_BASE_URL="https://nexus.example.com/repository/appcircle-gcs" ./download-runner.sh 260914
+```
+
+- The image version is required with a mirror, because the latest image is found through the Google Cloud Storage API.
+- Credentials for the mirror are read from `~/.netrc` when it has an entry for the mirror host.
+- Each image is verified with the MD5 checksum in the `<file>.md5` file next to it. With the default location the script falls back to the MD5 checksum in the object's `ETag` while the `.md5` files are not published. With a mirror there is no fallback, because a mirror serves its own `ETag`.
+
 ### `download-server.sh`
 
 You can use that script to download the latest Appcircle server package.
@@ -97,7 +107,7 @@ Keep it accurate.
 
 | Repository file | Published as |
 | --- | --- |
-| `download-runner.sh` | `https://cdn.appcircle.io/self-hosted/download-runner.sh` |
+| `download-runner.sh` | `https://cdn.appcircle.io/self-hosted/download-runner.sh`, and the same file as `download-runner-beta.sh` while older docs and customer automation still use that name |
 | `harden-host.sh` | `https://cdn.appcircle.io/self-hosted/harden-macos-host.sh` |
 | `run.sh` | `https://cdn.appcircle.io/self-hosted/run-<VERSION>.sh` |
 | `runner-service.sh` | `https://cdn.appcircle.io/self-hosted/runner-service.sh` |
@@ -124,6 +134,19 @@ Take `VERSION` from the top of the script, so 1.9.0 is published as
 page next to the image version it belongs to. A bare `run.sh` also exists on
 the old storage bucket, pinned at 1.0.2 and reachable by hosts installed before
 this convention; leave it in place, it is not the current download path.
+
+### macOS VM and Xcode images
+
+The images are not built from this repository, but `download-runner.sh` depends on how they are published. Upload an MD5 checksum file next to every `macOS_<version>.tar.gz` and `xcodes_<version>.tar.gz` in `gs://appcircle-dev-common/self-hosted/`, in the format `md5sum` prints (`<checksum>  <file name>`). Cloud Storage already keeps the MD5 of each object, so the file can be written from the object metadata without downloading the image:
+
+```bash
+B=gs://appcircle-dev-common/self-hosted
+f=macOS_260914.tar.gz
+printf '%s  %s\n' "$(gcloud storage objects describe "$B/$f" --format='value(md5_hash)' | base64 -d | xxd -p)" "$f" > "$f.md5"
+gcloud storage cp --no-clobber --content-type=text/plain "$f.md5" "$B/"
+```
+
+Without these files the script cannot verify downloads made through a mirror (`AC_RUNNER_IMAGE_BASE_URL`), and it stops.
 
 ## Testing
 
@@ -159,6 +182,13 @@ OK
 
 ### Test Cases
 
+- `download-runner-mirror-tests.sh` runs `download-runner.sh` against a local mirror (`tests/mirror-server.py`) and needs no internet access, only macOS and `python3`:
+  - **testMirrorDownloadWithChecksum**: downloads, verifies with the `.md5` files and extracts through the mirror; a trailing slash in the URL is accepted.
+  - **testMirrorRequiresVersion**: fails before downloading when no version is given.
+  - **testMirrorChecksumMismatch**: fails when the checksum does not match.
+  - **testMirrorMissingChecksumFile**: fails when the mirror does not serve the `.md5` file.
+  - **testMirrorWithNetrcCredentials**: fails without credentials and succeeds with them in `~/.netrc`.
+  - **testMirrorUrlHidesCredentials**: credentials in the URL work and are not printed.
 - `download-runner-tests.sh`
   - **testRunnerDownload**
     - Valid remote MD5 for macOS images should be found.
