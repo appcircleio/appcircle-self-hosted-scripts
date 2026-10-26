@@ -112,9 +112,12 @@ Keep it accurate.
 | `run.sh` | `https://cdn.appcircle.io/self-hosted/run-<VERSION>.sh` |
 | `runner-service.sh` | `https://cdn.appcircle.io/self-hosted/runner-service.sh` |
 | `check-runner-host.sh` | `https://cdn.appcircle.io/self-hosted/check-runner-host.sh` |
+| `download-server.sh` | `https://cdn.appcircle.io/self-hosted/download-server.sh` |
 
-`download-server.sh` is not published to the CDN; it is delivered with the
-server package instead.
+`download-server.sh` is the script the server installation and update docs run
+with `curl ... | bash`. It must keep working with the stock tools of Linux and
+macOS (no `grep -P`, no `tac`, bash 3.2 syntax); `./tests/download-server-tests.sh`
+checks that on both.
 
 Two of these rows are renames rather than plain copies, and nothing enforces
 either one, so verify the published URL after every upload.

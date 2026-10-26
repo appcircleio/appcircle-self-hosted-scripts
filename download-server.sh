@@ -4,7 +4,7 @@ set -eou pipefail
 credJsonPath="./cred.json"
 gcloudAccessToken=""
 userId=""
-version="0.1.3"
+version="0.1.4"
 preferedPackageVersion=""
 
 # Google OAuth 2.0 token endpoints.
@@ -91,9 +91,20 @@ check_cred_json() {
   fi
 }
 
+# Prints the value of the first "key": "value" string pair read from stdin.
+# Uses sed instead of grep -P, which BSD grep on macOS doesn't have.
+json_string_value() {
+  sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -n 1
+}
+
+# Prints stdin in reverse line order, like tac, which macOS doesn't have.
+reverse_lines() {
+  awk '{ lines[NR] = $0 } END { for (i = NR; i > 0; i--) print lines[i] }'
+}
+
 extract_user_id() {
   set +e
-  credJsonEmail=$(grep -oP '"UUID": "\K[^"]+' <$credJsonPath)
+  credJsonEmail=$(json_string_value UUID <"$credJsonPath")
   if [[ -z "$credJsonEmail" ]]; then
     echo "'UUID' was not found in 'cred.json'. Please check your 'cred.json' file."
     exit 1
@@ -127,7 +138,7 @@ authenticate_gcs() {
     fi
 
     set +e
-    gcloudAccessToken=$(echo "$tokenResponse" | grep -oP '"access_token"\s*:\s*"\K[^"]+')
+    gcloudAccessToken=$(echo "$tokenResponse" | json_string_value access_token)
     set -e
     if [[ -n "$gcloudAccessToken" ]]; then
       echo "Authenticated with Google using OAuth token endpoint '$tokenUrl'."
@@ -146,7 +157,7 @@ authenticate_gcs() {
 download_appcircle_server_package() {
   if [[ -n "$preferedPackageVersion" ]]; then
     set +e
-    foundedAppcircleServerPackage=$(echo "$listOfAppcirclePackages" | tac | grep -m 1 "$preferedPackageVersion")
+    foundedAppcircleServerPackage=$(echo "$listOfAppcirclePackages" | reverse_lines | grep -m 1 "$preferedPackageVersion")
     set -e
     if [[ -z "${foundedAppcircleServerPackage}" ]]; then
       echo "No Appcircle server version was found for the preferred version."
@@ -180,8 +191,8 @@ create_jwt_google_cloud() {
   #private_key=$(jq -r .private_key "$dockerCredFile")
   jsonData=$(<"$credJsonPath")
   set +e
-  privateKey=$(echo "$jsonData" | grep -oP '"private_key": "\K(.*)(?=")')
-  saEmail=$(echo "$jsonData" | grep -oP '"client_email": "\K(.*)(?=")')
+  privateKey=$(echo "$jsonData" | json_string_value private_key)
+  saEmail=$(echo "$jsonData" | json_string_value client_email)
   if [[ -z "$privateKey" ]]; then
     echo "'private_key' was not found in 'cred.json'. Please check your 'cred.json' file."
     exit 1
@@ -193,7 +204,8 @@ create_jwt_google_cloud() {
   set -e
 
   header='{"alg":"RS256","typ":"JWT"}'
-  exp=$(($(date +%s) + "$validForSec"))
+  # No quotes inside $(( )): bash 3.2, the default on macOS, rejects them.
+  exp=$(($(date +%s) + validForSec))
   iat=$(date +%s)
 
   claim=$(
@@ -234,4 +246,7 @@ main() {
   echo "You can now extract the package and follow the instructions in the setup documents."
 }
 
-main "$@"
+# Run only when executed, so the tests can source the functions.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

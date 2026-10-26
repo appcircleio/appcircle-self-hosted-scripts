@@ -139,11 +139,13 @@ extractXcodeFile() {
 extractFile() {
   fileToExtract=$1
   extractTargetPath=$2
+  # -S writes all-zero blocks as holes, so the 360 GB sparse disk.img keeps
+  # taking only its data size even when the sparse map is not honored.
   if ! pigz --version &>/dev/null; then
     echo "INFO: pigz command not found. Using the default gzip for extraction."
-    tar -zxf "$fileToExtract" --directory "$extractTargetPath"
+    tar -S -zxf "$fileToExtract" --directory "$extractTargetPath"
   else
-    pigz -cvdp 4 "$fileToExtract" | tar xvf - --directory "$extractTargetPath"
+    pigz -cvdp 4 "$fileToExtract" | tar -S -xvf - --directory "$extractTargetPath"
   fi
   if [[ "$?" != 0 ]]; then
     echo "Failed to extract the Tar file. $fileToExtract" >&2
