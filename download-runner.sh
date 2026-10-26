@@ -4,7 +4,7 @@ retryAttempt=1
 retryAttemptOrigin="${retryAttempt}"
 retryInterval=30
 retryMaxLimit=10
-version=1.2.0
+version=1.2.1
 defaultBaseUrl="https://storage.googleapis.com/appcircle-dev-common/self-hosted"
 # AC_RUNNER_IMAGE_BASE_URL points the downloads to a mirror of the default location, such as an artifact proxy.
 baseUrl="${AC_RUNNER_IMAGE_BASE_URL:-$defaultBaseUrl}"
@@ -80,12 +80,12 @@ parseArguments() {
 }
 
 getTheLatestVmImageName() {
-  latestVmImageName=$(getTheLatestFile "macOS*")
+  latestVmImageName=$(getTheLatestFile "macOS_*.tar.gz")
   echo "$latestVmImageName"
 }
 
 getTheLatestXcodeImageName() {
-  latestXcodeImageName=$(getTheLatestFile "xcodes*")
+  latestXcodeImageName=$(getTheLatestFile "xcodes_*.tar.gz")
   echo "$latestXcodeImageName"
 }
 

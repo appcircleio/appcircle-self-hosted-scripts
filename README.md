@@ -137,7 +137,7 @@ this convention; leave it in place, it is not the current download path.
 
 ### macOS VM and Xcode images
 
-The images are not built from this repository, but `download-runner.sh` depends on how they are published. Upload an MD5 checksum file next to every `macOS_<version>.tar.gz` and `xcodes_<version>.tar.gz` in `gs://appcircle-dev-common/self-hosted/`, in the format `md5sum` prints (`<checksum>  <file name>`). Cloud Storage already keeps the MD5 of each object, so the file can be written from the object metadata without downloading the image:
+The images are not built from this repository, but `download-runner.sh` depends on how they are published. Upload an MD5 checksum file next to every `macOS_<version>.tar.gz` and `xcodes_<version>.tar.gz` in `gs://appcircle-dev-common/self-hosted/`, in the format `md5sum` prints (`<checksum>  <file name>`). The latest-image lookup (no image version given) matches only `macOS_*.tar.gz` and `xcodes_*.tar.gz` since 1.2.1; up to 1.2.0 it matched every name starting with `macOS` or `xcodes` and picked a `.md5` file once they were published. Cloud Storage already keeps the MD5 of each object, so the file can be written from the object metadata without downloading the image:
 
 ```bash
 B=gs://appcircle-dev-common/self-hosted
