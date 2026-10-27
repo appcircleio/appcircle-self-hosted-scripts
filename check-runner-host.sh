@@ -16,16 +16,18 @@
 # Environment:
 #   APPCIRCLE_URL   Appcircle server to reach (default https://my.appcircle.io).
 #                   Set this to your own domain on a self-hosted installation.
-#   RUNNER_USER     Account that owns the runners (default: current user).
+#   RUNNER_USER     Account that owns the runners (default: the user who ran
+#                   sudo, otherwise the current user).
 #   SKIP_NET=1      Skip all network reachability checks.
 #
 # Exit codes: 0 = ready (warnings allowed), 1 = not ready (at least one FAIL).
 # ==============================================================================
 
-version="1.0.0"
+version="1.0.1"
 
 APPCIRCLE_URL="${APPCIRCLE_URL:-https://my.appcircle.io}"
-RUNNER_USER="${RUNNER_USER:-$(id -un)}"
+# Under `sudo` the current user is root; the runners belong to the caller.
+RUNNER_USER="${RUNNER_USER:-${SUDO_USER:-$(id -un)}}"
 RUNNER_UID="$(id -u "$RUNNER_USER" 2>/dev/null || id -u)"
 # Strip the attribute name rather than taking the second field: dscl prints
 # "NFSHomeDirectory: /Users/foo", so `awk '{print $2}'` would cut a home
@@ -34,6 +36,12 @@ RUNNER_HOME="$(dscl . -read "/Users/$RUNNER_USER" NFSHomeDirectory 2>/dev/null \
   | sed -n 's/^NFSHomeDirectory: //p')"
 [ -d "$RUNNER_HOME" ] || RUNNER_HOME="$HOME"
 SKIP_NET="${SKIP_NET:-0}"
+
+# `sudo` and a non-login SSH shell drop Homebrew from PATH, which would report
+# tart, pigz and brew as missing although they are installed. Appended, so the
+# system tools this script runs as root are never shadowed by Homebrew's
+# user-writable directories.
+PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"
 
 PASS=0; WARN=0; FAIL=0
 FAIL_LIST=""; WARN_LIST=""
@@ -72,9 +80,10 @@ asuser() {
 #                 current host key") unless a desktop session exists. Adding
 #                 SessionCreate to the job does not help.
 #
-# 14 and 15 are untested. Treat anything above the last known-good release as
-# requiring a session, so an unverified host is flagged rather than quietly
-# passed.
+# macOS 15.7.7 behaves like 26 (measured; there the error is VZErrorDomain
+# Code=1 "The virtual machine failed to start."). 14 is untested. Treat
+# anything above the last known-good release as requiring a session, so an
+# unverified host is flagged rather than quietly passed.
 OS_MAJOR=$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)
 case "$OS_MAJOR" in
   ''|*[!0-9]*) HOSTKEY_NEEDS_SESSION=1 ;;
@@ -347,12 +356,15 @@ GUI_OK=0
 launchctl print "gui/$RUNNER_UID" >/dev/null 2>&1 && GUI_OK=1
 
 # The session-less path depends on this one being unlocked with no auto-lock,
-# so grade it instead of only reporting it. The unlock survives the session that
-# performed it, which is why a daemon-side unlock is visible from here at all.
+# so grade it instead of only reporting it. An SSH session often cannot read the
+# keychain state at all ("User interaction is not allowed"), even after the
+# daemon unlocked it (measured on macOS 15.7.7), so that answer is not graded.
 if [ "$KC_UNLOCK" = 1 ] || { [ "$MODE" = "daemon" ] && [ "$HOSTKEY_NEEDS_SESSION" = 1 ]; }; then
   case "$KC_SSH" in
     *no-timeout*)
       ok "Keychain (SSH context)" "unlocked, no auto-lock timeout - correct for a LaunchDaemon" ;;
+    *"User interaction is not allowed"*)
+      skip "Keychain (SSH context)" "cannot be read from this session - check service-stdout.log in the runner folder for \"Keychain unlocked\"" ;;
     *lock-on-sleep*|*timeout*)
       bad "Keychain (SSH context)" "auto-lock is set ($(echo "$KC_SSH" | tr -d '\n')) - the first build passes and the next one fails once it locks. Fix: security set-keychain-settings $KC_PATH" ;;
     *)
@@ -594,7 +606,12 @@ section "9. tart and VM images"
 # ==============================================================================
 if command -v tart >/dev/null 2>&1; then
   ok "tart" "$(tart --version 2>&1 | head -n1) at $(command -v tart)"
-  VMS=$(tart list 2>&1)
+  # tart keeps its VMs per user: under sudo, list the runner account's, not root's.
+  if [ "$(id -u)" = 0 ]; then
+    VMS=$(sudo -u "$RUNNER_USER" "$(command -v tart)" list 2>&1)
+  else
+    VMS=$(tart list 2>&1)
+  fi
   if echo "$VMS" | grep -q "Name"; then
     # Do not assume the images are literally named vm01/vm02 - real hosts use
     # names like vm01.240514.self-automation. Anything that is neither a

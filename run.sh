@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-VERSION="1.9.1"
+VERSION="1.10.0"
 if [ $# -ne 1 ]; then
     # print version
     echo "v$VERSION"
@@ -38,10 +38,9 @@ function getTartCmd() {
     local xcodePath="$HOME/images"
 
     local command="tart run $VMNAME-$UUID"
-    command=${command}" --disk=$xcodePath/xcode.26.3.dmg:ro"
-    command=${command}" --disk=$xcodePath/xcode.26.4.dmg:ro"
-    command=${command}" --disk=$xcodePath/xcode.26.5.dmg:ro"
     command=${command}" --disk=$xcodePath/xcode.26.6.dmg:ro"
+    command=${command}" --disk=$xcodePath/xcode.27.0.dmg:ro"
+    command=${command}" --disk=$xcodePath/xcode.27.1.dmg:ro"
     command=${command}" --no-graphics"
 
     echo "$command"
@@ -100,7 +99,9 @@ function waitForTart () {
 # because deleteVM never got to run. They waste disk and count against Apple's
 # limit of two concurrent macOS VMs per host, so the next start would fail.
 function cleanupOrphans () {
-    if pgrep -f "tart run ${VMNAME}-" >/dev/null 2>&1; then
+    # Anchored, so a shell or a log viewer whose arguments merely contain this
+    # text is not mistaken for a running VM.
+    if pgrep -f "^(.*/)?tart run ${VMNAME}-" >/dev/null 2>&1; then
         log "A tart process for ${VMNAME} is already running, skipping orphan cleanup."
         return 0
     fi
@@ -110,7 +111,9 @@ function cleanupOrphans () {
         [ -n "$orphan" ] || continue
         log "Deleting orphaned VM clone: ${orphan}"
         tart delete "$orphan" || log "Could not delete ${orphan}"
-    done < <(tart list 2>/dev/null | awk -v pat="^${VMNAME}-" '$2 ~ pat {print $2}')
+    # Only names run.sh itself creates (<vm>-<uuid>), never another base VM
+    # such as "vm01-old".
+    done < <(tart list 2>/dev/null | awk -v pat="^${VMNAME}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" '$2 ~ pat {print $2}')
 }
 
 # launchd starts this very early at boot, before the host has working outbound
@@ -132,8 +135,8 @@ function waitForNetwork () {
         tryCount=$((tryCount + 1))
         # Do not block boot forever: an air-gapped host would never pass this.
         if [ "$tryCount" -ge 24 ]; then
-            log "Network still unreachable (${NET_CHECK_HOST}:${NET_CHECK_PORT}) after 2 minutes. Starting the VM anyway."
-            log 'If the guest clock is wrong, its TLS calls will fail. Set NET_CHECK_HOST to something reachable.'
+            log "Network still unreachable (${NET_CHECK_HOST}:${NET_CHECK_PORT}) after 24 tries. Starting the VM anyway."
+            log 'If the guest clock is wrong, its TLS calls will fail. Set NET_CHECK_HOST to something reachable (runner-service.sh install --net-check-host).'
             return 0
         fi
         log "Waiting for host network (${NET_CHECK_HOST}:${NET_CHECK_PORT})..."
@@ -145,12 +148,14 @@ function waitForNetwork () {
 # HostKey when a file-based login keychain is present and unlocked. A desktop
 # login normally does that unlock, which is why the daemon appeared to need
 # auto-login. It does not: the daemon can perform the same unlock itself, and
-# a host with this configured was measured running unattended on macOS 26.6.2
-# through a reboot with neither an SSH nor a desktop login.
+# a host with this configured was measured running unattended on macOS 15.7.7
+# and 26.6.2 through a reboot with neither an SSH nor a desktop login.
 #
-# Without it tart fails with:
+# Without it tart fails with, on macOS 26:
 #   VZErrorDomain Code=-9 "The virtual machine encountered a security error."
 #   Failed to get current host key. / Failed to create new HostKey.
+# and on macOS 15:
+#   VZErrorDomain Code=1 "The virtual machine failed to start."
 #
 # KEYCHAIN_PW_FILE holds the keychain password, mode 600, owned by the runner
 # user. Override the path - never the secret itself - through the service
@@ -164,10 +169,14 @@ KEYCHAIN_PW_FILE="${KEYCHAIN_PW_FILE:-$HOME/.appcircle/runner-keychain.pw}"
 function ensureKeychain () {
     if [ ! -f "$KEYCHAIN_PW_FILE" ]; then
         log "No keychain password file at ${KEYCHAIN_PW_FILE}, skipping keychain unlock."
-        log 'On macOS 15 or newer tart fails with "Failed to get current host key" unless a desktop session has already unlocked the keychain.'
+        log 'On macOS 15 or newer tart fails with a VZErrorDomain error unless a desktop session has already unlocked the keychain.'
         return 0
     fi
 
+    # -p puts the password in security's arguments for the few milliseconds it
+    # runs. Feeding it on stdin is not an option: when the script has a
+    # terminal (the manual `screen` method), security reads /dev/tty instead
+    # and waits there forever.
     local pw
     pw=$(cat "$KEYCHAIN_PW_FILE")
 
