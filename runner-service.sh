@@ -28,7 +28,7 @@
 
 set -euo pipefail
 
-VERSION="1.0.0"
+VERSION="1.0.1"
 
 cd "$(dirname "$0")"
 RUNNER_DIR="$(pwd -P)"
@@ -62,6 +62,16 @@ resolve_runner_user() {
     || die "Could not determine the runner user. Run this with sudo from the runner account."
   id -u "$u" >/dev/null 2>&1 || die "User '$u' does not exist."
   printf '%s' "$u"
+}
+
+# Absolute path of tart, or empty. `sudo` resets PATH, so a bare `tart` run as
+# root or through `sudo -u` does not find a Homebrew install.
+tart_path() {
+  if [ -x "${BREW_PREFIX}/bin/tart" ]; then
+    printf '%s' "${BREW_PREFIX}/bin/tart"
+  else
+    command -v tart 2>/dev/null || true
+  fi
 }
 
 service_loaded() {
@@ -130,16 +140,9 @@ cmd_install() {
   # Base image check is advisory: tart state is per-user, so query it as the
   # runner account rather than as root.
   #
-  # Resolve tart to an absolute path first. `sudo` runs a binary, so it cannot
-  # run the `command` builtin, and it resets PATH, so a bare `sudo -u x tart`
-  # would not find a Homebrew install either. Both forms fail whether or not
-  # tart is present, which turns an advisory check into a permanent warning.
-  local tart_bin=""
-  if [ -x "${BREW_PREFIX}/bin/tart" ]; then
-    tart_bin="${BREW_PREFIX}/bin/tart"
-  else
-    tart_bin="$(command -v tart 2>/dev/null || true)"
-  fi
+  # Resolve tart to an absolute path first (see tart_path).
+  local tart_bin
+  tart_bin="$(tart_path)"
 
   if [ -n "$tart_bin" ]; then
     if ! sudo -u "$runner_user" "$tart_bin" list 2>/dev/null | awk '{print $2}' | grep -qx "$vm"; then
@@ -298,20 +301,25 @@ plist_vm() {
 # clears it on the next start, but on a disk-constrained host it should not sit
 # there in between.
 cleanup_clones() {
-  local vm user c found=0
+  local vm user c tart_bin found=0
   vm="$(plist_vm)"
   [ -n "$vm" ] || return 0
   user="$(resolve_runner_user)"
+  tart_bin="$(tart_path)"
+  if [ -z "$tart_bin" ]; then
+    warn "tart not found, leftover clones of '${vm}' were not checked."
+    return 0
+  fi
   while IFS= read -r c; do
     [ -n "$c" ] || continue
     found=1
-    sudo -u "$user" tart stop "$c" >/dev/null 2>&1 || true
-    if sudo -u "$user" tart delete "$c" >/dev/null 2>&1; then
+    sudo -u "$user" "$tart_bin" stop "$c" >/dev/null 2>&1 || true
+    if sudo -u "$user" "$tart_bin" delete "$c" >/dev/null 2>&1; then
       info "Deleted leftover clone: $c"
     else
       warn "Could not delete leftover clone: $c"
     fi
-  done < <(sudo -u "$user" tart list 2>/dev/null | awk -v p="^${vm}-" '$2 ~ p {print $2}')
+  done < <(sudo -u "$user" "$tart_bin" list 2>/dev/null | awk -v p="^${vm}-" '$2 ~ p {print $2}')
   [ "$found" = 0 ] && info "No leftover clones for '${vm}'."
   return 0
 }
@@ -367,7 +375,7 @@ cmd_stop() {
   # finishes a build - an idle runner with no work queued will not exit on its
   # own, so this wait can run to the full timeout. Say so instead of implying
   # it is only ever about a build in progress.
-  if pgrep -f "tart run ${vm}-" >/dev/null 2>&1; then
+  if pgrep -f "^(.*/)?tart run ${vm}-" >/dev/null 2>&1; then
     info "A VM is running. Waiting for it to power off (timeout $((timeout / 60)) min)."
     info "It powers off after it completes a build. An idle runner will NOT exit on its own -"
     info "use 'sudo $0 stop --now' if the runner has no work to finish."
@@ -410,20 +418,22 @@ cmd_status() {
     service_disabled && warn "Disabled   : marked disabled - it will NOT come back after a reboot (sudo $0 start)"
     launchctl print "system/${LABEL}" 2>/dev/null \
       | awk -F'=' '/^[[:space:]]*(state|username|path|last exit code)[[:space:]]*=/ {sub(/^[[:space:]]+/,""); print "             " $0}'
+  elif [ ! -f "$PLIST" ]; then
+    info "State      : not loaded - nothing starts at boot"
+  elif service_disabled; then
+    warn "State      : not loaded AND marked disabled - it will NOT start at boot (sudo $0 start)"
   else
-    if service_disabled; then
-      warn "State      : not loaded AND marked disabled - it will NOT start at boot (sudo $0 start)"
-    else
-      info "State      : not loaded, but enabled - it will start at the next boot"
-    fi
+    info "State      : not loaded, but enabled - it will start at the next boot"
   fi
 
   info "Runner dir : ${RUNNER_DIR}"
   [ -e "${RUNNER_DIR}/.stop" ] && warn ".stop is present - the loop will exit after the current build."
 
-  if command -v tart >/dev/null 2>&1; then
+  local tart_bin
+  tart_bin="$(tart_path)"
+  if [ -n "$tart_bin" ]; then
     info "VMs:"
-    tart list 2>/dev/null | sed 's/^/             /' || true
+    "$tart_bin" list 2>/dev/null | sed 's/^/             /' || true
   fi
 }
 
