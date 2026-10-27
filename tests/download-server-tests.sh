@@ -8,6 +8,7 @@ set +eu +o pipefail
 
 oneTimeSetUp() {
   workDir="$(mktemp -d)"
+  mkdir -p "$workDir/empty"
   openssl genrsa -out "$workDir/key.pem" 2048 2>/dev/null
   openssl rsa -in "$workDir/key.pem" -pubout -out "$workDir/pub.pem" 2>/dev/null
   # The private key is stored in cred.json as one JSON string with \n escapes.
@@ -74,6 +75,12 @@ testJwtSignatureVerifies() {
   printf '%s' "$signedPart" >"$workDir/signed.txt"
   assertTrue "The JWT signature should verify with the public key." \
     "openssl dgst -sha256 -verify '$workDir/pub.pem' -signature '$workDir/sig.bin' '$workDir/signed.txt'"
+}
+
+testRunsWhenPiped() {
+  # The docs run the script with curl ... | bash; it must reach main and stop at the missing cred.json.
+  output="$(cd "$workDir/empty" && bash <"$OLDPWD/download-server.sh" 2>&1)"
+  assertContains "Piped into bash, the script should run main." "$output" "'cred.json' file doesn't exist"
 }
 
 testNoGnuOnlyTools() {
