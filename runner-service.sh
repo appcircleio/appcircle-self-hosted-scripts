@@ -433,7 +433,12 @@ cmd_status() {
   tart_bin="$(tart_path)"
   if [ -n "$tart_bin" ]; then
     info "VMs:"
-    "$tart_bin" list 2>/dev/null | sed 's/^/             /' || true
+    # tart keeps its VMs per user: under sudo, list the runner account's, not root's.
+    if [ "$(id -u)" = 0 ]; then
+      sudo -u "$(resolve_runner_user)" "$tart_bin" list 2>/dev/null | sed 's/^/             /' || true
+    else
+      "$tart_bin" list 2>/dev/null | sed 's/^/             /' || true
+    fi
   fi
 }
 
