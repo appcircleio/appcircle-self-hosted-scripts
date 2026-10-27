@@ -17,6 +17,7 @@
 #
 # Usage, from inside a runner directory (e.g. $HOME/runner1):
 #   sudo ./runner-service.sh install vm01
+#   sudo ./runner-service.sh install vm01 --net-check-host api.example.com:443
 #   sudo ./runner-service.sh status
 #   sudo ./runner-service.sh stop            # waits for the VM to power off
 #   sudo ./runner-service.sh stop --now      # immediate: kills current build
@@ -108,8 +109,13 @@ assert_xml_safe() {
 
 # ------------------------------------------------------------------ install
 cmd_install() {
-  local vm="${1:-}"
-  [ -n "$vm" ] || die "Usage: sudo $0 install <vm-name>   (e.g. vm01)"
+  local vm="${1:-}" net_check=""
+  local usage="Usage: sudo $0 install <vm-name> [--net-check-host <host>[:<port>]]   (e.g. vm01)"
+  [ -n "$vm" ] || die "$usage"
+  if [ $# -gt 1 ]; then
+    [ "$2" = "--net-check-host" ] && [ -n "${3:-}" ] && [ $# -eq 3 ] || die "$usage"
+    net_check="$3"
+  fi
   require_root
 
   local runner_user
@@ -136,6 +142,21 @@ cmd_install() {
   assert_xml_safe "$RUNNER_DIR"
   assert_xml_safe "$vm"
   assert_xml_safe "$runner_home"
+
+  # run.sh waits up to 2 minutes at every start until it can reach
+  # www.apple.com:443. A host without that route (air-gapped, proxy-only) gets
+  # the full wait each time, so let the install name a host it can reach.
+  local net_env=""
+  if [ -n "$net_check" ]; then
+    local net_host="${net_check%:*}" net_port="443"
+    [ "$net_host" != "$net_check" ] && net_port="${net_check##*:}"
+    case "$net_port" in ''|*[!0-9]*) die "Invalid port in --net-check-host: ${net_check}" ;; esac
+    assert_xml_safe "$net_host"
+    net_env="        <key>NET_CHECK_HOST</key>
+        <string>${net_host}</string>
+        <key>NET_CHECK_PORT</key>
+        <string>${net_port}</string>"
+  fi
 
   # Base image check is advisory: tart state is per-user, so query it as the
   # runner account rather than as root.
@@ -197,6 +218,7 @@ cmd_install() {
         <string>${BREW_PREFIX}/Cellar</string>
         <key>HOME</key>
         <string>${runner_home}</string>
+${net_env}
     </dict>
 
     <key>UserName</key>
@@ -250,6 +272,7 @@ EOF
   info "  runner dir : ${RUNNER_DIR}"
   info "  user       : ${runner_user}"
   info "  vm         : ${vm}"
+  [ -n "$net_check" ] && info "  net check  : ${net_check}"
 
   launchctl load -w "$PLIST"
 
@@ -452,7 +475,10 @@ usage() {
   cat <<EOF
 Appcircle runner launchd service manager v${VERSION}
 
-  sudo $0 install <vm-name>   Install and start the service
+  sudo $0 install <vm-name> [--net-check-host <host>[:<port>]]
+                              Install and start the service. --net-check-host
+                              replaces www.apple.com:443 as the host run.sh
+                              waits for at boot (air-gapped or proxy-only hosts).
   sudo $0 uninstall           Stop and remove the service
   sudo $0 start               Start (or kickstart) the service
   sudo $0 stop [--now] [--disable] [--timeout N]
@@ -473,7 +499,7 @@ EOF
 }
 
 case "${1:-}" in
-  install)   shift; cmd_install "${1:-}" ;;
+  install)   shift; cmd_install "$@" ;;
   uninstall) cmd_uninstall ;;
   start)     cmd_start ;;
   stop)      shift; cmd_stop "$@" ;;
