@@ -4,7 +4,7 @@ retryAttempt=1
 retryAttemptOrigin="${retryAttempt}"
 retryInterval=30
 retryMaxLimit=10
-version=1.2.1
+version=1.2.2
 defaultBaseUrl="https://storage.googleapis.com/appcircle-dev-common/self-hosted"
 # AC_RUNNER_IMAGE_BASE_URL points the downloads to a mirror of the default location, such as an artifact proxy.
 baseUrl="${AC_RUNNER_IMAGE_BASE_URL:-$defaultBaseUrl}"
@@ -204,14 +204,18 @@ checkMd5Sum() {
   os=$(uname -s)
   if [[ $os == "Darwin" ]]; then
     md5Cli="md5"
+    # md5 prints "MD5 (<file>) = <hash>".
+    hashField=4
   elif [[ $os == "Linux" ]]; then
     md5Cli="md5sum"
+    # md5sum prints "<hash>  <file>".
+    hashField=1
   fi
   if ! command -v $md5Cli &>/dev/null; then
     echo "$md5Cli command not found." >&2
     exit 1
   fi
-  downloadedMd5=$($md5Cli "$fileToCheck" | cut -d' ' -f4)
+  downloadedMd5=$($md5Cli "$fileToCheck" | cut -d' ' -f"$hashField")
   echo "Downloaded File's MD5: $downloadedMd5"
   if [[ "$downloadedMd5" != "$validMd5" ]]; then
     echo "Your downloaded file is corrupted. Delete the $fileToCheck and run the script again." >&2
