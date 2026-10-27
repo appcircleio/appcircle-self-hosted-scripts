@@ -38,8 +38,10 @@ RUNNER_HOME="$(dscl . -read "/Users/$RUNNER_USER" NFSHomeDirectory 2>/dev/null \
 SKIP_NET="${SKIP_NET:-0}"
 
 # `sudo` and a non-login SSH shell drop Homebrew from PATH, which would report
-# tart, pigz and brew as missing although they are installed.
-PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+# tart, pigz and brew as missing although they are installed. Appended, so the
+# system tools this script runs as root are never shadowed by Homebrew's
+# user-writable directories.
+PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"
 
 PASS=0; WARN=0; FAIL=0
 FAIL_LIST=""; WARN_LIST=""
