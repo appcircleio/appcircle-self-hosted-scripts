@@ -604,7 +604,12 @@ section "9. tart and VM images"
 # ==============================================================================
 if command -v tart >/dev/null 2>&1; then
   ok "tart" "$(tart --version 2>&1 | head -n1) at $(command -v tart)"
-  VMS=$(tart list 2>&1)
+  # tart keeps its VMs per user: under sudo, list the runner account's, not root's.
+  if [ "$(id -u)" = 0 ]; then
+    VMS=$(sudo -u "$RUNNER_USER" "$(command -v tart)" list 2>&1)
+  else
+    VMS=$(tart list 2>&1)
+  fi
   if echo "$VMS" | grep -q "Name"; then
     # Do not assume the images are literally named vm01/vm02 - real hosts use
     # names like vm01.240514.self-automation. Anything that is neither a
