@@ -111,7 +111,9 @@ function cleanupOrphans () {
         [ -n "$orphan" ] || continue
         log "Deleting orphaned VM clone: ${orphan}"
         tart delete "$orphan" || log "Could not delete ${orphan}"
-    done < <(tart list 2>/dev/null | awk -v pat="^${VMNAME}-" '$2 ~ pat {print $2}')
+    # Only names run.sh itself creates (<vm>-<uuid>), never another base VM
+    # such as "vm01-old".
+    done < <(tart list 2>/dev/null | awk -v pat="^${VMNAME}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" '$2 ~ pat {print $2}')
 }
 
 # launchd starts this very early at boot, before the host has working outbound
@@ -133,8 +135,8 @@ function waitForNetwork () {
         tryCount=$((tryCount + 1))
         # Do not block boot forever: an air-gapped host would never pass this.
         if [ "$tryCount" -ge 24 ]; then
-            log "Network still unreachable (${NET_CHECK_HOST}:${NET_CHECK_PORT}) after 2 minutes. Starting the VM anyway."
-            log 'If the guest clock is wrong, its TLS calls will fail. Set NET_CHECK_HOST to something reachable.'
+            log "Network still unreachable (${NET_CHECK_HOST}:${NET_CHECK_PORT}) after 24 tries. Starting the VM anyway."
+            log 'If the guest clock is wrong, its TLS calls will fail. Set NET_CHECK_HOST to something reachable (runner-service.sh install --net-check-host).'
             return 0
         fi
         log "Waiting for host network (${NET_CHECK_HOST}:${NET_CHECK_PORT})..."

@@ -143,7 +143,7 @@ cmd_install() {
   assert_xml_safe "$vm"
   assert_xml_safe "$runner_home"
 
-  # run.sh waits up to 2 minutes at every start until it can reach
+  # run.sh waits 2-3 minutes at every start until it can reach
   # www.apple.com:443. A host without that route (air-gapped, proxy-only) gets
   # the full wait each time, so let the install name a host it can reach.
   local net_env=""
@@ -342,7 +342,7 @@ cleanup_clones() {
     else
       warn "Could not delete leftover clone: $c"
     fi
-  done < <(sudo -u "$user" "$tart_bin" list 2>/dev/null | awk -v p="^${vm}-" '$2 ~ p {print $2}')
+  done < <(sudo -u "$user" "$tart_bin" list 2>/dev/null | awk -v p="^${vm}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" '$2 ~ p {print $2}')
   [ "$found" = 0 ] && info "No leftover clones for '${vm}'."
   return 0
 }
