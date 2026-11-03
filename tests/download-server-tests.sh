@@ -5,6 +5,8 @@ source ./tests/shunit2-setup.sh
 # The functions are sourced, so these tests need no cred.json and no network.
 source ./download-server.sh
 set +eu +o pipefail
+# extract_user_id and create_jwt_google_cloud turn set -e back on, so each call is followed by set +e:
+# shunit2 does not support set -e (2.1.8 exits in assertTrue on a non-numeric condition).
 
 oneTimeSetUp() {
   workDir="$(mktemp -d)"
@@ -31,6 +33,7 @@ oneTimeTearDown() {
 testUserIdFromCredJson() {
   credJsonPath="$workDir/cred.json"
   extract_user_id
+  set +e
   assertEquals "11111111-2222-3333-4444-555555555555" "$userId"
 }
 
@@ -66,7 +69,6 @@ testJwtSignatureVerifies() {
   scope="https://www.googleapis.com/auth/devstorage.read_only"
   tokenAud="https://oauth2.googleapis.com/token"
   create_jwt_google_cloud "$credJsonPath" "$scope"
-  # The function turns set -e back on; shunit2 does not support it (2.1.8 exits in assertTrue).
   set +e
   signedPart="${jwtGoogleCloud%.*}"
   signature="${jwtGoogleCloud##*.}"
