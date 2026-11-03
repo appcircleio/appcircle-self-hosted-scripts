@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-VERSION="1.10.0"
+VERSION="1.11.0"
 if [ $# -ne 1 ]; then
     # print version
     echo "v$VERSION"
@@ -41,6 +41,7 @@ function getTartCmd() {
     command=${command}" --disk=$xcodePath/xcode.26.6.dmg:ro"
     command=${command}" --disk=$xcodePath/xcode.27.0.dmg:ro"
     command=${command}" --disk=$xcodePath/xcode.27.1.dmg:ro"
+    command=${command}" --disk=$xcodePath/xcode.27.2.dmg:ro"
     command=${command}" --no-graphics"
 
     echo "$command"
