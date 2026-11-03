@@ -66,6 +66,8 @@ testJwtSignatureVerifies() {
   scope="https://www.googleapis.com/auth/devstorage.read_only"
   tokenAud="https://oauth2.googleapis.com/token"
   create_jwt_google_cloud "$credJsonPath" "$scope"
+  # The function turns set -e back on; shunit2 does not support it (2.1.8 exits in assertTrue).
+  set +e
   signedPart="${jwtGoogleCloud%.*}"
   signature="${jwtGoogleCloud##*.}"
   # Back from base64url without padding to base64 with padding.
