@@ -48,17 +48,50 @@ testReverseLines() {
   assertEquals "c b a " "$(printf 'a\nb\nc\n' | reverse_lines | tr '\n' ' ')"
 }
 
-testPreferredVersionSelection() {
-  # index.txt lists the customer packages oldest first, with a build suffix.
-  packages="$(printf '%s\n' appcircle-server-linux-x64-3.34.1-aaa1111-10.zip appcircle-server-linux-x64-3.34.1-bbb2222-11.zip appcircle-server-linux-x64-3.34.10-ccc3333-12.zip)"
-  preferedPackageVersion="3.34.1"
-  suffix_version_option
-  assertEquals "3.34.1-" "$preferedPackageVersion"
-  # The "-" suffix keeps 3.34.1 from matching 3.34.10; the newest 3.34.1 build wins.
-  assertEquals "appcircle-server-linux-x64-3.34.1-bbb2222-11.zip" "$(echo "$packages" | reverse_lines | grep -m 1 "$preferedPackageVersion")"
-  preferedPackageVersion="3.34"
-  suffix_version_option
-  assertEquals "appcircle-server-linux-x64-3.34.10-ccc3333-12.zip" "$(echo "$packages" | reverse_lines | grep -m 1 "$preferedPackageVersion")"
+# Prints the package download_appcircle_server_package picks for version $1
+# ("" for the latest), or nothing when it finds none. curl is stubbed, so
+# nothing is downloaded; the subshell keeps its exit and set -e out of shunit2.
+selected_package() {
+  (
+    curl() { :; }
+    # index.txt lists the packages oldest first, with or without a build suffix.
+    listOfAppcirclePackages="$(printf '%s\n' \
+      appcircle-server-linux-x64-3.33.0.zip \
+      appcircle-server-linux-x64-3.34.1-aaa1111-10.zip \
+      appcircle-server-linux-x64-3.34.1-bbb2222-11.zip \
+      appcircle-server-linux-x64-3.34.10-ccc3333-12.zip \
+      appcircle-server-linux-x64-3.35.1.zip \
+      appcircle-server-linux-x64-3.35.10.zip)"
+    preferedPackageVersion="$1"
+    suffix_version_option
+    download_appcircle_server_package >/dev/null 2>&1
+    echo "$appcircleServerPackage"
+  )
+}
+
+testExactVersionWithBuildSuffix() {
+  # The newest 3.34.1 build wins, and 3.34.1 never matches 3.34.10.
+  assertEquals "appcircle-server-linux-x64-3.34.1-bbb2222-11.zip" "$(selected_package 3.34.1)"
+}
+
+testExactVersionWithoutBuildSuffix() {
+  assertEquals "appcircle-server-linux-x64-3.33.0.zip" "$(selected_package 3.33.0)"
+  assertEquals "appcircle-server-linux-x64-3.35.1.zip" "$(selected_package 3.35.1)"
+  assertEquals "appcircle-server-linux-x64-3.35.10.zip" "$(selected_package 3.35.10)"
+}
+
+testVersionPrefix() {
+  assertEquals "appcircle-server-linux-x64-3.34.10-ccc3333-12.zip" "$(selected_package 3.34)"
+  assertEquals "appcircle-server-linux-x64-3.35.10.zip" "$(selected_package 3.35)"
+}
+
+testLatestVersion() {
+  assertEquals "appcircle-server-linux-x64-3.35.10.zip" "$(selected_package "")"
+}
+
+testVersionNotFound() {
+  assertEquals "" "$(selected_package 3.34.2)"
+  assertEquals "" "$(selected_package 3.36)"
 }
 
 testJwtSignatureVerifies() {
