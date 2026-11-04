@@ -161,6 +161,16 @@ testRollBackRestoresVmAndRunSh() {
   assertNotEquals "a second rollback has nothing to go back to" "0" "$?"
 }
 
+testLockOfAKilledRunIsTakenOver() {
+  local cfg="$workDir/lock"
+  mkdir -p "$cfg/.lock"; echo 99999 >"$cfg/.lock/pid"   # no such process
+  ( CFG="$cfg" LOCKED=0 lock >/dev/null 2>&1; [ "$(cat "$cfg/.lock/pid")" != 99999 ] )
+  assertEquals "a stale lock is taken over" "0" "$?"
+  echo $$ >"$cfg/.lock/pid"                            # a live process
+  ( CFG="$cfg" LOCKED=0 lock >/dev/null 2>&1 )
+  assertNotEquals "a live lock is refused" "0" "$?"
+}
+
 testUnknownImageIsRefused() {
   ( cmd_pull 999999 >/dev/null 2>&1 )
   assertNotEquals "0" "$?"

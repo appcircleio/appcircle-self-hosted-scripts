@@ -112,13 +112,18 @@ cleanup() {
   return "$rc"
 }
 trap cleanup EXIT
+trap 'exit 130' INT TERM; trap 'exit 129' HUP   # so cleanup runs on Ctrl-C and a closed SSH session too
 
 lock() {
   [ "$LOCKED" = 1 ] && return 0
   mkdir -p "$CFG" && chmod 700 "$CFG"
   if ! mkdir "$CFG/.lock" 2>/dev/null; then
-    die "another runner-vm.sh is running (lock $CFG/.lock). Remove it only if no other run is active."
+    # a lock left by a run that was killed (power loss, kill -9) is taken over
+    kill -0 "$(cat "$CFG/.lock/pid" 2>/dev/null || echo 0)" 2>/dev/null \
+      && die "another runner-vm.sh is running (pid $(cat "$CFG/.lock/pid"))"
+    warn "taking over the lock of a run that ended without cleaning up"
   fi
+  mkdir -p "$CFG/.lock" && echo $$ >"$CFG/.lock/pid"
   LOCKED=1
 }
 
@@ -859,7 +864,7 @@ cmd_install() {
   done
   check_folder; read_token; sudo_ok || die "install starts the runners as services and needs sudo"
   lock; start_log install
-  tart_has "macOS_$v" || cmd_pull "$v"
+  cmd_pull "$v"   # downloads only what is missing; resumes an interrupted download
   REGISTER_NEXT=1 create_vms "$v" "$@"
   for n in "$@"; do register_one "$n" "$pool"; done
   for n in "$@"; do start_one "$n" || die "$n is installed and registered but did not start: run start $n"; done
@@ -876,7 +881,7 @@ cmd_upgrade() {
   for n in "$@"; do [ -f "$CFG/runners/$n/selfHosted.json" ] || die "no registration for $n in $CFG/runners: run capture first"; done
   check_folder; sudo_ok || die "upgrade stops and starts the runner services and needs sudo"
   lock; start_log upgrade
-  tart_has "macOS_$v" || cmd_pull "$v"
+  cmd_pull "$v"
   log "stopping $* (running builds are waited for)"
   for n in "$@"; do stop_one "$n"; RESTART="$RESTART $n"; done
   create_vms "$v" "$@"
