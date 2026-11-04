@@ -109,7 +109,7 @@ Keep it accurate.
 | --- | --- |
 | `download-runner.sh` | `https://cdn.appcircle.io/self-hosted/download-runner.sh`, and the same file as `download-runner-beta.sh` while older docs and customer automation still use that name |
 | `harden-host.sh` | `https://cdn.appcircle.io/self-hosted/harden-macos-host.sh` |
-| `run.sh` | `https://cdn.appcircle.io/self-hosted/run-<VERSION>.sh` |
+| `run.sh` | `https://storage.googleapis.com/appcircle-dev-common/self-hosted/run-<VERSION>.sh` (the URL the macOS VM setup page downloads) |
 | `runner-service.sh` | `https://cdn.appcircle.io/self-hosted/runner-service.sh` |
 | `check-runner-host.sh` | `https://cdn.appcircle.io/self-hosted/check-runner-host.sh` |
 | `download-server.sh` | `https://cdn.appcircle.io/self-hosted/download-server.sh` |
