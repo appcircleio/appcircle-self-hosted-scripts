@@ -1,9 +1,6 @@
 # Which repository file is published under which name in gs://appcircle-prod-common/self-hosted/
 # (served as https://cdn.appcircle.io/self-hosted/). One "<repository file> <published name>" per line.
-# {VERSION} is replaced with the VERSION= value at the top of the repository file; such a name is
-# immutable: the pipeline fails instead of overwriting it with different content.
-# Versioned names come first, so a mutable script never points at a file that is not uploaded yet.
-run.sh               run-{VERSION}.sh
+# Only files that already exist in the bucket are listed; the pipeline updates them to the repository version.
 check-runner-host.sh check-runner-host.sh
 runner-service.sh    runner-service.sh
 download-runner.sh   download-runner.sh

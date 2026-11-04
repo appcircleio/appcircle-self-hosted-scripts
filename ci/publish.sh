@@ -2,8 +2,8 @@
 # Publishes the scripts listed in ci/publish.map to the self-hosted bucket. Run from the repository root.
 #
 #   ci/publish.sh build    Copy each file under its published name into dist/ and write <name>.md5 next to it.
-#   ci/publish.sh upload   Upload dist/ to the bucket. A versioned name that already exists with different
-#                          content fails the run; files that are already up to date are skipped.
+#   ci/publish.sh upload   Update the bucket copies from dist/. Only names that already exist in the bucket are
+#                          written; a missing name fails the run. Files that are already up to date are skipped.
 #   ci/publish.sh verify   Download every published name and its .md5 from the public origin and compare.
 #
 # Environment: BUCKET_PATH (gs://...), ORIGIN_URL (https://storage.googleapis.com/...), CACHE_BUST (any
@@ -13,27 +13,20 @@ set -euo pipefail
 
 mapFile="ci/publish.map"
 distDir="dist"
-mutableCacheControl="public, max-age=300"
-versionedCacheControl="public, max-age=3600"
+cacheControl="public, max-age=300"
 
 fail() {
   echo "ERROR: $*" >&2
   exit 1
 }
 
-# Prints "<source> <published name> <versioned: 0|1>" per mapping line.
+# Prints "<source> <published name>" per mapping line.
 readMap() {
-  local source target version
+  local source target
   while read -r source target; do
     [[ -z "$source" || "$source" == \#* ]] && continue
     [[ -f "$source" ]] || fail "$mapFile names $source, which does not exist."
-    if [[ "$target" == *"{VERSION}"* ]]; then
-      version=$(sed -n -E 's/^VERSION="?([^"]+)"?[[:space:]]*$/\1/p' "$source" | head -n 1)
-      [[ -n "$version" ]] || fail "$source has no VERSION= line, so $target cannot be named."
-      echo "$source ${target//\{VERSION\}/$version} 1"
-    else
-      echo "$source $target 0"
-    fi
+    echo "$source $target"
   done <"$mapFile"
 }
 
@@ -42,10 +35,10 @@ md5Of() {
 }
 
 build() {
-  local source target versioned
+  local source target
   rm -rf "$distDir"
   mkdir -p "$distDir"
-  while read -r source target versioned; do
+  while read -r source target; do
     cp "$source" "$distDir/$target"
     (cd "$distDir" && md5sum "$target" >"$target.md5")
     echo "$source -> $target $(md5Of "$distDir/$target")"
@@ -69,20 +62,18 @@ remoteMd5() {
 }
 
 upload() {
-  local source target versioned localMd5 currentMd5 cacheControl
+  local source target localMd5 currentMd5 cacheControl
   [[ -d "$distDir" ]] || fail "Run '$0 build' first."
-  while read -r source target versioned; do
+  while read -r source target; do
     localMd5=$(md5Of "$distDir/$target")
     currentMd5=$(remoteMd5 "$BUCKET_PATH/$target") || fail "Cannot read $BUCKET_PATH/$target."
     if [[ "$currentMd5" == "$localMd5" ]]; then
       echo "Up to date: $target ($localMd5)"
       continue
     fi
-    if [[ "$versioned" == 1 && -n "$currentMd5" ]]; then
-      fail "$target already exists with MD5 $currentMd5, not $localMd5. Versioned files are immutable: bump VERSION in $source."
+    if [[ -z "$currentMd5" ]]; then
+      fail "$BUCKET_PATH/$target does not exist. The pipeline only updates files that are already in the bucket."
     fi
-    cacheControl="$mutableCacheControl"
-    [[ "$versioned" == 1 ]] && cacheControl="$versionedCacheControl"
     gcloud storage cp --content-type=text/x-sh --cache-control="$cacheControl" \
       "$distDir/$target" "$BUCKET_PATH/$target"
     gcloud storage cp --content-type=text/plain --cache-control="$cacheControl" \
@@ -92,8 +83,8 @@ upload() {
 }
 
 verify() {
-  local source target versioned localMd5 servedMd5 checksumFile failed=0
-  while read -r source target versioned; do
+  local source target localMd5 servedMd5 checksumFile failed=0
+  while read -r source target; do
     localMd5=$(md5Of "$source")
     if ! servedMd5=$(curl -fsSL "$ORIGIN_URL/$target?cb=$CACHE_BUST" | md5sum | cut -d ' ' -f 1) ||
       [[ "$servedMd5" != "$localMd5" ]]; then

@@ -108,17 +108,19 @@ checks (`bash -n`, ShellCheck, the offline tests). `develop` is the working
 branch, and merging it into `main` is the release.
 
 [`ci/publish.map`](ci/publish.map) is the only record of which repository file
-becomes which public file. Keep it accurate. For each entry the pipeline:
+becomes which public file. Keep it accurate. It lists only files that already
+exist in the bucket. For each entry the pipeline:
 
-- uploads the file with a `<name>.md5` file next to it (`md5sum` format), and skips it when the bucket already has the same content;
-- fails instead of overwriting a versioned name (`run-<VERSION>.sh`) that already exists with different content;
+- updates the bucket copy with a `<name>.md5` file next to it (`md5sum` format), and skips it when the bucket already has the same content;
+- fails if the name does not exist in the bucket yet, so it never creates a new public file;
 - downloads every published name and its `.md5` file from the origin and compares the MD5 with the repository file, then runs `download-server.sh` and `download-runner.sh` through `curl ... | bash`.
 
-Mutable names get `Cache-Control: public, max-age=300`, versioned names `max-age=3600`.
-Google's edge cache cannot be purged, so an old copy can be served until its max-age expires.
+Uploads get `Cache-Control: public, max-age=300`. Google's edge cache cannot be
+purged, so an old copy can be served until its max-age expires.
 
-`run.sh` was earlier published to `gs://appcircle-dev-common/self-hosted/`, the
-URL the macOS VM setup page still downloads from.
+`run.sh` is not in the mapping. It is published by hand as
+`https://storage.googleapis.com/appcircle-dev-common/self-hosted/run-<VERSION>.sh`
+(the URL the macOS VM setup page downloads).
 
 `download-server.sh` is the script the server installation and update docs run
 with `curl ... | bash`. It must keep working with the stock tools of Linux and
