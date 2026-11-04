@@ -93,10 +93,23 @@ running() { pgrep -f "tart run $1( |\$)" >/dev/null 2>&1; }
 running_count() { pgrep -f "tart run " 2>/dev/null | wc -l | tr -d ' '; }
 
 LOCKED=0
+BUILDING=""   # runner names whose <name>-new VMs a create is building
+RESTART=""    # runners an upgrade stopped, to start again if it fails
 cleanup() {
+  local rc=$? n
+  set +e
+  if [ "$rc" != 0 ] && [ -n "$BUILDING" ]; then
+    for n in $BUILDING; do vm_remove "$n-new"; done
+    vm_remove "$BASE_VM"
+    log "nothing was changed on the runners; the half-built VMs were removed"
+  fi
+  if [ "$rc" != 0 ] && [ -n "$RESTART" ]; then
+    log "starting $RESTART again on their previous VMs"
+    for n in $RESTART; do start_one "$n"; done
+  fi
   [ -n "${AP:-}" ] && rm -f "$AP"
   [ "$LOCKED" = 1 ] && rm -rf "$CFG/.lock"
-  return 0
+  return "$rc"
 }
 trap cleanup EXIT
 
@@ -148,8 +161,14 @@ boot() {
     running "$vm" || die "$vm stopped while booting: $(tail -n 1 "/tmp/tart-$vm.log")"
     sleep 2
   done
-  [ -n "$ip" ] || die "$vm got no IP address"
-  for _ in $(seq 1 60); do vmssh "$ip" true 2>/dev/null && break; sleep 1; done
+  local up=0
+  if [ -n "$ip" ]; then
+    for _ in $(seq 1 60); do vmssh "$ip" true 2>/dev/null && { up=1; break; }; sleep 1; done
+  fi
+  if [ "$up" = 0 ]; then
+    tart stop "$vm" >/dev/null 2>&1 || true; pkill -f "tart run $vm( |\$)" || true
+    die "$vm did not answer SSH as $GUEST_USER (IP '${ip:-none}'; AC_GUEST_PASSWORD if the image password was changed); it was powered off"
+  fi
   vmssh "$ip" "cd $GUEST_RUNNER && ./ac-runner service -c stop >/dev/null 2>&1 || true"
   IP=$ip
   log "$vm up at $ip, runner service stopped"
@@ -202,27 +221,32 @@ remote_size_gb() {  # whole GB, rounded up
 
 # fetch <file> <dest-dir> <stream:0|1>: download (resumable) and verify, then extract with -S.
 # With stream=1 nothing is kept on disk: curl | tee md5 | pigz | tar, verified after extraction.
+# Both extract into a staging folder that becomes <dest-dir> only when complete and verified,
+# so a broken download never looks like an installed image.
 fetch() {
-  local f=$1 dest=$2 stream=$3 want got tmp
+  local f=$1 dest=$2 stream=$3 want got tmp part
   want=$(expected_md5 "$f") || die "no checksum for $f at $(masked "$IMAGE_BASE"): the location must serve $f.md5"
-  mkdir -p "$dest"
+  part="$HOME/.appcircle/partial/$(basename "$dest")"
+  rm -rf "$part"; mkdir -p "$part"
   if [ "$stream" = 1 ]; then
     tmp=$(mktemp)
-    log "streaming $f into $dest"
+    log "streaming $f (download and extraction at once)"
     curl --netrc-optional -fsSL --retry 5 --retry-delay 30 "$IMAGE_BASE/$f" \
-      | tee >(md5 -q >"$tmp") | pigz -dc | tar -S -xf - -C "$dest" \
-      || die "downloading or extracting $f failed; delete what it extracted in $dest and pull again"
+      | tee >(md5 -q >"$tmp") | pigz -dc | tar -S -xf - -C "$part" \
+      || { rm -rf "$part"; die "downloading or extracting $f failed; pull again"; }
     sleep 2; got=$(cat "$tmp"); rm -f "$tmp"
   else
     mkdir -p "$DOWNLOAD_DIR"
     log "downloading $f to $DOWNLOAD_DIR (resumes if interrupted)"
-    curl --netrc-optional -fL --retry 5 --retry-delay 30 -C - -o "$DOWNLOAD_DIR/$f" "$IMAGE_BASE/$f"
+    curl --netrc-optional -fL --retry 5 --retry-delay 30 -C - -o "$DOWNLOAD_DIR/$f" "$IMAGE_BASE/$f" \
+      || die "downloading $f failed; pull again to resume"
     got=$(md5 -q "$DOWNLOAD_DIR/$f")
     [ "$got" = "$want" ] || die "$f is corrupt (md5 $got, expected $want). Delete $DOWNLOAD_DIR/$f and pull again."
     log "extracting $f"
-    pigz -dc "$DOWNLOAD_DIR/$f" | tar -S -xf - -C "$dest"
+    pigz -dc "$DOWNLOAD_DIR/$f" | tar -S -xf - -C "$part" || { rm -rf "$part"; die "extracting $f failed (disk space?); pull again"; }
   fi
-  [ "$got" = "$want" ] || die "$f does not match its checksum (md5 $got, expected $want); delete what it extracted in $dest and pull again"
+  [ "$got" = "$want" ] || { rm -rf "$part"; die "$f does not match its checksum (md5 $got, expected $want); pull again"; }
+  rm -rf "$dest"; mkdir -p "$(dirname "$dest")"; mv "$part" "$dest"
   ok "$f verified (md5 $got)"
 }
 
@@ -244,11 +268,16 @@ cmd_pull() {
   if tart_has "macOS_$v"; then
     log "macOS_$v is already installed"
   else
-    need_gb=$(( $(remote_size_gb "macOS_$v.tar.gz") + $(remote_size_gb "xcodes_$v.tar.gz") ))
-    [ "$stream" = 1 ] || need_gb=$(( need_gb * 2 ))
-    need_gb=$(( need_gb + MIN_FREE_GB ))
-    if [ "$(free_gb)" -lt "$need_gb" ]; then
-      die "$(free_gb) GB free, about $need_gb GB needed$([ "$stream" = 1 ] || echo "; --stream needs about half (no archive kept, no resume)")"
+    # Extracted, an image takes about 1.2 times its archive; without --stream the archives are kept too.
+    local arc; arc=$(( $(remote_size_gb "macOS_$v.tar.gz") + $(remote_size_gb "xcodes_$v.tar.gz") ))
+    if [ "$arc" -le 2 ]; then
+      warn "the download location does not report the archive sizes; the disk space check is skipped"
+    else
+      need_gb=$(( arc * 12 / 10 + MIN_FREE_GB ))
+      [ "$stream" = 1 ] || need_gb=$(( need_gb + arc ))
+      if [ "$(free_gb)" -lt "$need_gb" ]; then
+        die "$(free_gb) GB free, about $need_gb GB needed$([ "$stream" = 1 ] || echo "; --stream needs about $(( arc * 12 / 10 + MIN_FREE_GB )) GB (no archive kept, no resume)")"
+      fi
     fi
     fetch "macOS_$v.tar.gz" "$HOME/.tart/vms/macOS_$v" "$stream"
     log "disk.img takes $(du -sh "$HOME/.tart/vms/macOS_$v/disk.img" | cut -f1) on disk"
@@ -310,6 +339,21 @@ step "server settings"
 jq --arg b "$(envget AC_BASE_API_URL)" --arg r "$(envget AC_REDIS_STREAM_ENDPOINT)" \
   '.ASPNETCORE_BASE_API_URL=$b | .ASPNETCORE_REDIS_STREAM_ENDPOINT=$r | .ASPNETCORE_NOSHUTDOWN="false"' \
   appsettings.json >appsettings.json.new && mv appsettings.json.new appsettings.json
+if [ -s $C/hosts ]; then
+  step "hosts"
+  while IFS= read -r l; do [ -n "$l" ] && { grep -qxF -- "$l" /etc/hosts || print -r -- "$l" | sudo tee -a /etc/hosts >/dev/null; }; done <$C/hosts
+fi
+# The proxy is needed before the certificate step (install_cert.sh connects to every trust URL)
+# and before Homebrew installs tinyproxy, so first point everything at the corporate proxy itself.
+php=$(envget PROXY_HOSTPORT); np=$(envget NO_PROXY); [ -n "$np" ] || np="localhost,127.0.0.1"
+pu=$(envget PROXY_USER); pp=$(envget PROXY_PASSWORD)
+if [ -n "$php" ]; then
+  U="http://$php"
+  if [ -n "$pu" ]; then
+    eu=$(jq -rn --arg v "$pu" '$v|@uri'); ep=$(jq -rn --arg v "$pp" '$v|@uri'); U="http://$eu:$ep@$php"
+  fi
+  export HTTP_PROXY=$U HTTPS_PROXY=$U http_proxy=$U https_proxy=$U NO_PROXY=$np no_proxy=$np
+fi
 args=()
 for c in $C/certs/*.pem(N) $C/certs/*.crt(N); do args+=(--cert $c); done
 for u in ${(f)"$(lines $C/trust-urls.txt)"}; do args+=(--url $u); done
@@ -337,15 +381,12 @@ if [ -n "$ntp" ]; then
     sudo systemsetup -setnetworktimeserver "$ntp" >/dev/null 2>&1 || true
   fi
 fi
-php=$(envget PROXY_HOSTPORT); np=$(envget NO_PROXY); [ -n "$np" ] || np="localhost,127.0.0.1"
 if [ -n "$php" ]; then
-  pu=$(envget PROXY_USER); pp=$(envget PROXY_PASSWORD)
   mkdir -p ~/.zshrc.d ~/.gradle
   if [ -n "$pu" ]; then
     # Basic-auth proxy: Java tools cannot send its credentials, so a local tinyproxy holds them.
     step "proxy: local tinyproxy on 127.0.0.1:8888 -> $php"
-    eu=$(jq -rn --arg v "$pu" '$v|@uri'); ep=$(jq -rn --arg v "$pp" '$v|@uri')
-    HTTPS_PROXY="http://$eu:$ep@$php" HTTP_PROXY="http://$eu:$ep@$php" brew install --quiet tinyproxy >/dev/null
+    brew install --quiet tinyproxy >/dev/null
     conf=/opt/homebrew/etc/tinyproxy/appcircle.conf
     printf 'User nobody\nGroup nobody\nPort 8888\nListen 127.0.0.1\nAllow 127.0.0.1\nTimeout 600\nMaxClients 100\nLogLevel Warning\nUpstream http %s:%s@%s\n' "$pu" "$pp" "$php" | sudo tee $conf >/dev/null
     sudo chown root:wheel $conf; sudo chmod 600 $conf
@@ -365,10 +406,6 @@ export HTTP_PROXY=$L HTTPS_PROXY=$L http_proxy=$L https_proxy=$L NO_PROXY=\"$np\
   jnp=$(print -r -- "$np" | tr ',' '\n' | grep -v / | grep -v '^$' | sed 's/^\./*./' | paste -sd'|' -)
   { for s in http https; do print -r -- "systemProp.$s.proxyHost=$ph"; print -r -- "systemProp.$s.proxyPort=$pport"; print -r -- "systemProp.$s.nonProxyHosts=$jnp"; done } >~/.gradle/gradle.properties
   export HTTP_PROXY=$L HTTPS_PROXY=$L http_proxy=$L https_proxy=$L NO_PROXY=$np no_proxy=$np
-fi
-if [ -s $C/hosts ]; then
-  step "hosts"
-  while IFS= read -r l; do [ -n "$l" ] && { grep -qxF -- "$l" /etc/hosts || print -r -- "$l" | sudo tee -a /etc/hosts >/dev/null; }; done <$C/hosts
 fi
 if [ -d $C/files ] && [ -n "$(ls -A $C/files 2>/dev/null)" ]; then step "files"; rsync -a $C/files/ ~/; fi
 grep -q 'zshrc.d' ~/.zshrc || print -r -- $'\n# Customer settings from the runner host config (runner-vm.sh)\nfor f in ~/.zshrc.d/*.zsh(N); do source $f; done' >>~/.zshrc
@@ -395,8 +432,11 @@ step "verify"
 fail=0
 for u in ${(f)"$(lines $C/trust-urls.txt)"}; do
   h=${u%%:*}; p=${u##*:}; [ "$p" = "$u" ] && p=443
-  v=$(/usr/bin/curl -s -o /dev/null --max-time 20 -w '%{ssl_verify_result}' "https://$h:$p/" || true)
-  print -r -- "    https://$h:$p verify=$v"; [ "$v" = 0 ] || fail=1
+  # Fails on DNS (6), connect (7), timeout (28), proxy CONNECT (56) and TLS (35, 51, 58, 60, 77, 90, 91) errors;
+  # ssl_verify_result alone reads 0 then. Other codes come after a trusted handshake, e.g. 52 from Redis (not HTTP).
+  rc=0; v=$(/usr/bin/curl -s -o /dev/null --max-time 20 -w '%{ssl_verify_result}' "https://$h:$p/") || rc=$?
+  print -r -- "    https://$h:$p curl=$rc verify=$v"
+  case $rc in 6|7|28|35|51|56|58|60|77|90|91) fail=1 ;; esac; [ "$v" = 0 ] || fail=1
 done
 rm -rf $C
 [ $fail = 0 ] || exit 1
@@ -468,6 +508,8 @@ cmd_capture() {
   tart_has "$vm" || die "VM $vm not found (tart list)"
   tart_has "$img" || die "image $img not found (tart list); capture compares the VM with its source image"
   lock; start_log capture
+  log "note: the copy of $vm boots with its registration; its runner service is stopped within seconds,"
+  log "      but a build queued at that moment can start on the copy and is cancelled when it powers off"
   W=$(mktemp -d /tmp/ac-capture.XXXXXX)
   mkdir -p "$CFG"/{runners,certs,review,files,scripts}
   log "reading the image $img (what the VM started from)"; collect "$img" "$W/img"
@@ -475,6 +517,7 @@ cmd_capture() {
 
   if [ -s "$W/vm/selfHosted.json" ]; then
     name=$(jq -r .AgentName "$W/vm/selfHosted.json")
+    valid_name "$name" || die "the registration of $vm has the runner name '$name', which is not 5-24 letters, digits, - or _"
     mkdir -p "$CFG/runners/$name"
     cp "$W/vm/selfHosted.json" "$CFG/runners/$name/selfHosted.json"
     log "registration: $(jq -c 'del(.QueueToken)' "$W/vm/selfHosted.json") -> runners/$name (the VM is named $name from now on)"
@@ -512,9 +555,10 @@ cmd_capture() {
     known="$known"$'\n'"$fp"
     subj=$(openssl x509 -in "$f" -noout -subject -nameopt RFC2253 | sed 's/^subject=//')
     iss=$(openssl x509 -in "$f" -noout -issuer -nameopt RFC2253 | sed 's/^issuer=//')
-    cn=$(printf '%s' "$subj" | sed -n 's/.*CN=\([^,]*\).*/\1/p' | tr -c 'A-Za-z0-9.-' '_')
+    cn=$(printf '%s' "$subj" | sed -n 's/.*CN=\([^,]*\).*/\1/p' | tr -d '\n' | tr -c 'A-Za-z0-9.-' '_')
     if [ "$subj" = "$iss" ]; then
-      cp "$f" "$CFG/certs/${cn:-root-$n}.pem"; n=$((n + 1)); log "root certificate: $subj"
+      # the fingerprint's end keeps two roots with the same name (an old and a renewed one) apart
+      fp=${fp//:/}; cp "$f" "$CFG/certs/${cn:-root}-${fp: -8}.pem"; n=$((n + 1)); log "root certificate: $subj"
     else
       echo "$subj  $(openssl x509 -in "$f" -noout -ext subjectAltName 2>/dev/null | grep -o 'DNS:[^,]*' | tr '\n' ' ')" >>"$CFG/review/certificates.txt"
     fi
@@ -580,10 +624,45 @@ check_folder() {
 
 runner_dir() { echo "$RUNNERS_ROOT/$1"; }
 
-# create_vms <image version> <name>...: one base from the image + folder, then one VM per runner
+# vm_remove <vm>: stop (a `tart run` that outlived its VM too) and delete, if it exists
+vm_remove() {
+  running "$1" && { tart stop "$1" >/dev/null 2>&1 || true; pkill -f "tart run $1( |\$)" || true; sleep 1; }
+  tart_has "$1" && tart delete "$1"
+  return 0
+}
+
+# switch_in <name> <run.sh version>: <name>-new becomes <name>, the current VM and run.sh become the
+# rollback copies. Only renames, run once every new VM is complete.
+switch_in() {
+  local n=$1 r=$2 d
+  d=$(runner_dir "$n")
+  if tart_has "$n"; then
+    vm_remove "$n-prev"
+    tart rename "$n" "$n-prev"
+  fi
+  tart rename "$n-new" "$n"
+  mkdir -p "$d"
+  [ -f "$d/run.sh" ] && cp -p "$d/run.sh" "$d/run.sh.prev"
+  cp "$(runsh_cache "$r")" "$d/run.sh.new" && chmod u+x "$d/run.sh.new" && mv "$d/run.sh.new" "$d/run.sh"
+  rm -f "$d/.stop" "$d/.stopped"
+}
+
+# roll_back <name>: <name>-prev becomes <name> again, with the run.sh it had.
+roll_back() {
+  local n=$1 d
+  d=$(runner_dir "$n")
+  tart_has "$n-prev" || die "$n-prev not found: nothing to roll back to"
+  vm_remove "$n"
+  tart rename "$n-prev" "$n"
+  [ -f "$d/run.sh.prev" ] && mv "$d/run.sh.prev" "$d/run.sh"
+  rm -f "$d/.stop" "$d/.stopped"
+}
+
+# create_vms <image version> <name>...: one base from the image + folder, then one VM per runner,
+# built as <name>-new; the runners' VMs change only when all of them are ready.
 create_vms() {
   local v=$1; shift
-  local img="macOS_$v" n t0 t1 runsh
+  local img="macOS_$v" n t0 runsh
   t0=$(date +%s)
   for n in "$@"; do valid_name "$n" || die "runner name '$n': 5-24 letters, digits, - or _"; done
   tart_has "$img" || die "$img is not installed: run pull $v"
@@ -591,42 +670,37 @@ create_vms() {
   get_runsh "$runsh"
   pull_dmgs_present "$v" || die "Xcode disks of $v missing in $IMAGES_DIR: run pull $v"
   [ "$(free_gb)" -ge "$MIN_FREE_GB" ] || die "less than $MIN_FREE_GB GB free"
-  if running "$BASE_VM"; then tart stop "$BASE_VM" >/dev/null 2>&1 || true; pkill -f "tart run $BASE_VM( |\$)" || true; sleep 2; fi
-  tart delete "$BASE_VM" >/dev/null 2>&1 || true
+  BUILDING="$*"
+  vm_remove "$BASE_VM"
+  for n in "$@"; do vm_remove "$n-new"; done
   tart clone "$img" "$BASE_VM"
   tart set "$BASE_VM" --cpu "$(env_get VM_CPU)" --memory "$(env_get VM_MEMORY_MB)"
   boot "$BASE_VM"
   log "applying $CFG"
   if ! apply_folder "$IP"; then
-    halt "$BASE_VM" "$IP" keep; tart delete "$BASE_VM"
-    die "applying the folder failed (see above); nothing was changed on the runners"
+    halt "$BASE_VM" "$IP" keep
+    die "applying the folder failed (see above)"
   fi
   halt "$BASE_VM" "$IP" keep
   log "base ready in $(( $(date +%s) - t0 )) s"
   for n in "$@"; do
-    t1=$(date +%s)
-    if tart_has "$n"; then
-      tart delete "$n-prev" >/dev/null 2>&1 || true
-      tart rename "$n" "$n-prev"
-      log "$n kept as $n-prev (rollback)"
-    fi
-    tart clone "$BASE_VM" "$n"
+    tart clone "$BASE_VM" "$n-new"
     if [ -f "$CFG/runners/$n/selfHosted.json" ]; then
-      boot "$n"
+      boot "$n-new"
       vmscp "$CFG/runners/$n/selfHosted.json" "$GUEST_USER@$IP:$GUEST_RUNNER/selfHosted.json"
       vmssh "$IP" "chmod 600 $GUEST_RUNNER/selfHosted.json"
-      halt "$n" "$IP" enable
+      halt "$n-new" "$IP" enable
       log "$n: registration $(jq -c '{AgentName, PoolName}' "$CFG/runners/$n/selfHosted.json")"
     else
       [ "${REGISTER_NEXT:-0}" = 1 ] || warn "$n has no registration yet: run register $n <pool>"
     fi
-    mkdir -p "$(runner_dir "$n")"
-    [ -f "$(runner_dir "$n")/run.sh" ] && cp -p "$(runner_dir "$n")/run.sh" "$(runner_dir "$n")/run.sh.prev"
-    cp "$(runsh_cache "$runsh")" "$(runner_dir "$n")/run.sh"; chmod u+x "$(runner_dir "$n")/run.sh"
-    rm -f "$(runner_dir "$n")/.stop" "$(runner_dir "$n")/.stopped"
-    ok "$n ready in $(( $(date +%s) - t1 )) s (image $v, run.sh $runsh)"
   done
-  tart delete "$BASE_VM"
+  vm_remove "$BASE_VM"
+  for n in "$@"; do
+    switch_in "$n" "$runsh"
+    ok "$n is on image $v (run.sh $runsh); previous VM kept as $n-prev"
+  done
+  BUILDING=""
   log "created in $(( $(date +%s) - t0 )) s"
 }
 
@@ -634,6 +708,7 @@ cmd_create() {
   local v=${1:-}; shift || true
   valid_version "$v" && [ $# -ge 1 ] || die "usage: create <image> <name>..."
   check_folder; lock; start_log create
+  for n in "$@"; do stopped "$n" || die "$n is running: stop it first"; done
   create_vms "$v" "$@"
   log "next: start $*"
 }
@@ -673,53 +748,70 @@ cmd_register() {
 }
 
 # ------------------------------------------------------------------ service
-service_script() {  # the runner-service.sh next to run.sh; downloaded once, kept for later runs
-  local d; d=$(runner_dir "$1")
-  if [ ! -x "$d/runner-service.sh" ]; then
-    curl -fsSL -o "$d/runner-service.sh" "$CDN_BASE/runner-service.sh" || die "could not download runner-service.sh from $(masked "$CDN_BASE")"
-    chmod u+x "$d/runner-service.sh"
-  fi
-  echo "$d/runner-service.sh"
-}
+# sudo reads the password from the terminal, also when stdin carries a token.
+sudo_ok() { sudo -n true 2>/dev/null || { [ -r /dev/tty ] && sudo -v </dev/tty; }; }
 
-sudo_ok() { sudo -n true 2>/dev/null || { [ -t 0 ] && sudo -v; }; }
-
+# start_one <name>: (re)install and start the runner's launchd service. Returns 1 with a warning on failure.
 start_one() {
-  local n=$1 s net
-  [ -x "$(runner_dir "$n")/run.sh" ] || die "$(runner_dir "$n")/run.sh missing: run create first"
-  tart_has "$n" || die "VM $n not found"
-  s=$(service_script "$n")
-  sudo_ok || die "starting the service needs sudo"
-  net="$(url_host "$(env_get AC_BASE_API_URL)"):443"
-  # runner-service.sh 1.0.1 and newer take the host run.sh waits for at boot; 1.0.0 does not.
-  if "$s" --help 2>&1 | grep -q -- '--net-check-host'; then
-    (cd "$(runner_dir "$n")" && sudo ./runner-service.sh install "$n" --net-check-host "$net")
-  else
-    (cd "$(runner_dir "$n")" && sudo ./runner-service.sh install "$n")
+  local n=$1 d s net
+  d=$(runner_dir "$n")
+  [ -x "$d/run.sh" ] || { warn "$d/run.sh missing: run create $n first"; return 1; }
+  tart_has "$n" || { warn "VM $n not found"; return 1; }
+  if [ ! -x "$d/runner-service.sh" ]; then
+    curl -fsSL -o "$d/runner-service.sh" "$CDN_BASE/runner-service.sh" && chmod u+x "$d/runner-service.sh" \
+      || { warn "could not download runner-service.sh from $(masked "$CDN_BASE")"; return 1; }
   fi
+  sudo_ok || { warn "starting $n needs sudo"; return 1; }
+  net="$(url_host "$(env_get AC_BASE_API_URL)"):443"
+  s=(sudo ./runner-service.sh install "$n")
+  # runner-service.sh 1.0.1 and newer take the host run.sh waits for at boot; 1.0.0 does not.
+  "$d/runner-service.sh" --help 2>&1 | grep -q -- '--net-check-host' && s+=(--net-check-host "$net")
+  (cd "$d" && "${s[@]}") || { warn "runner-service.sh could not start $n"; return 1; }
   ok "$n started as a launchd service"
 }
 
-stop_one() {  # stops the service, or a run.sh loop started by hand, and the current clone
-  local n=$1 d pids c ip
+# The VM names a runner folder's run.sh loop clones: the runner name, or what a loop started by
+# hand runs (hosts set up from the docs run "runner1/run.sh vm01").
+loop_vms() {
+  local d; d=$(runner_dir "$1")
+  { echo "$1"; ps -axo command= | awk -v p="$d/run.sh" '{for (i = 1; i < NF; i++) if ($i == p) print $(i + 1)}'; } | sort -u
+}
+clones_of() { tart list 2>/dev/null | awk -v p="^$1-[0-9a-f]{8}-" '$2 ~ p {print $2}'; }
+loop_running() { pgrep -f "$(runner_dir "$1")/run.sh" >/dev/null 2>&1; }
+stopped() { ! loop_running "$1" && [ -z "$(for v in $(loop_vms "$1"); do clones_of "$v"; done)" ]; }
+
+# stop_one <name>: drain, then stop. The loop gets .stop and a clone is powered off only when its
+# runner says it is idle; any other answer (a build, an ssh error) is waited for
+# (AC_RUNNER_DRAIN_TIMEOUT seconds, default 7200; AC_RUNNER_STOP_NOW=1 does not wait).
+# Then the service is stopped and leftover clones are removed.
+stop_one() {
+  local n=$1 d vms v c ip t0 waited="" timeout=${AC_RUNNER_DRAIN_TIMEOUT:-7200}
   d=$(runner_dir "$n")
-  if [ -f "/Library/LaunchDaemons/io.appcircle.$n.plist" ]; then
-    sudo_ok || die "stopping the service needs sudo"
-    (cd "$d" && sudo ./runner-service.sh stop --now) || true
-  fi
-  pids=$(pgrep -f "$d/run.sh|\./run.sh $n\$" 2>/dev/null || true)
-  if [ -n "$pids" ]; then
+  vms=$(loop_vms "$n")
+  if loop_running "$n"; then
     touch "$d/.stop"
     askpass
-    for c in $(tart list 2>/dev/null | awk -v p="^$n-[0-9a-f]{8}-" '$2 ~ p {print $2}'); do
-      ip=$(tart ip "$c" 2>/dev/null || true)
-      [ -n "$ip" ] && vmssh "$ip" 'sudo shutdown -h now' >/dev/null 2>&1 || true
+    t0=$(date +%s)
+    while loop_running "$n"; do
+      for c in $(for v in $vms; do clones_of "$v"; done); do
+        ip=$(tart ip "$c" 2>/dev/null | grep -Eo '^[0-9]+(\.[0-9]+){3}$' || true)
+        [ -n "$ip" ] || continue
+        if [ "${AC_RUNNER_STOP_NOW:-0}" = 1 ] || vmssh "$ip" "grep -q '\"runningWorkflow\":false' $GUEST_RUNNER/status.log" 2>/dev/null; then
+          vmssh "$ip" 'sudo shutdown -h now' >/dev/null 2>&1 || true
+        else
+          case " $waited " in *" $c "*) ;; *) log "$n: waiting for $c (a build is running, or its runner is still starting)"; waited="$waited $c" ;; esac
+        fi
+      done
+      [ $(( $(date +%s) - t0 )) -lt "$timeout" ] || die "a build still runs on $n after $timeout s; wait, or set AC_RUNNER_STOP_NOW=1 to stop it anyway"
+      sleep 10
     done
-    for c in $(seq 1 60); do pgrep -f "$d/run.sh|\./run.sh $n\$" >/dev/null 2>&1 || break; sleep 3; done
   fi
-  for c in $(tart list 2>/dev/null | awk -v p="^$n-[0-9a-f]{8}-" '$2 ~ p {print $2}'); do
-    tart stop "$c" >/dev/null 2>&1 || true; tart delete "$c" >/dev/null 2>&1 || true
-  done
+  if [ -f "/Library/LaunchDaemons/io.appcircle.$n.plist" ]; then
+    sudo_ok || die "stopping the service of $n needs sudo"
+    (cd "$d" && sudo ./runner-service.sh stop --now >/dev/null 2>&1) || true
+  fi
+  for v in $vms; do for c in $(clones_of "$v"); do vm_remove "$c"; done; done
+  loop_running "$n" && die "the run.sh loop of $n is still running; stop it by hand"
   log "$n stopped"
 }
 
@@ -728,8 +820,11 @@ names_or_all() {
   ls "$CFG/runners" 2>/dev/null || true
 }
 
-cmd_start() { local n; check_folder; for n in $(names_or_all "$@"); do start_one "$n"; done; }
-cmd_stop() { local n; for n in $(names_or_all "$@"); do stop_one "$n"; done; }
+cmd_start() {
+  local n; check_folder; lock; start_log start
+  for n in $(names_or_all "$@"); do start_one "$n" || exit 1; done
+}
+cmd_stop() { local n; lock; start_log stop; for n in $(names_or_all "$@"); do stop_one "$n"; done; }
 
 cmd_status() {
   local n d svc vm prev clone runsh
@@ -737,14 +832,13 @@ cmd_status() {
   for n in $(names_or_all "$@"); do
     d=$(runner_dir "$n")
     vm="-"; tart_has "$n" && vm="yes"
-    prev="-"; tart_has "$n-prev" && prev="$n-prev"
+    prev="-"; tart_has "$n-prev" && prev="yes"
     svc="-"
     if [ -f "/Library/LaunchDaemons/io.appcircle.$n.plist" ]; then
       svc="installed"; launchctl print "system/io.appcircle.$n" >/dev/null 2>&1 && svc="running"
     fi
     runsh=$(sed -n 's/^VERSION="\(.*\)"/\1/p' "$d/run.sh" 2>/dev/null | head -n 1)
-    clone=$(tart list 2>/dev/null | awk -v p="^$n-[0-9a-f]{8}-" '$2 ~ p {print $2}' | head -n 1)
-    [ "$prev" != "-" ] && prev="yes"
+    clone=$(for v in $(loop_vms "$n"); do clones_of "$v"; done | head -n 1)
     printf '%-24s %-8s %-9s %-10s %-8s %s\n' "$n" "$vm" "$prev" "$svc" "${runsh:--}" "${clone:--}"
   done
   printf '\nImages: %s\n' "$(tart list 2>/dev/null | awk 'NR>1 && $2 ~ /^macOS_[0-9]+$/ {printf "%s ", $2}')"
@@ -759,13 +853,15 @@ cmd_install() {
   valid_name "$pool" || die "pool name '$pool': 5-24 letters, digits, - or _"
   for n in "$@"; do
     valid_name "$n" || die "runner name '$n': 5-24 letters, digits, - or _"
-    [ -f "$CFG/runners/$n/selfHosted.json" ] && die "$n is registered already; use upgrade"
+    [ -f "$CFG/runners/$n/selfHosted.json" ] && die "$n is registered already: run start $n, or upgrade"
+    tart_has "$n" && die "a VM named $n exists already"
   done
-  check_folder; read_token; lock; start_log install
+  check_folder; read_token; sudo_ok || die "install starts the runners as services and needs sudo"
+  lock; start_log install
   tart_has "macOS_$v" || cmd_pull "$v"
   REGISTER_NEXT=1 create_vms "$v" "$@"
   for n in "$@"; do register_one "$n" "$pool"; done
-  for n in "$@"; do start_one "$n"; done
+  for n in "$@"; do start_one "$n" || die "$n is installed and registered but did not start: run start $n"; done
   ok "installed: $*  (status: ./runner-vm.sh status)"
 }
 
@@ -777,30 +873,27 @@ cmd_upgrade() {
   set -- $(names_or_all "$@")
   [ $# -ge 1 ] || die "no runners in $CFG/runners: run capture on the current VMs first"
   for n in "$@"; do [ -f "$CFG/runners/$n/selfHosted.json" ] || die "no registration for $n in $CFG/runners: run capture first"; done
-  check_folder; lock; start_log upgrade
+  check_folder; sudo_ok || die "upgrade stops and starts the runner services and needs sudo"
+  lock; start_log upgrade
   tart_has "macOS_$v" || cmd_pull "$v"
-  log "stopping $*"
-  for n in "$@"; do stop_one "$n"; done
-  if ! (create_vms "$v" "$@"); then
-    warn "create failed; starting the runners again on what they had"
-    for n in "$@"; do start_one "$n" || true; done
-    exit 1
-  fi
-  for n in "$@"; do start_one "$n"; done
+  log "stopping $* (running builds are waited for)"
+  for n in "$@"; do stop_one "$n"; RESTART="$RESTART $n"; done
+  create_vms "$v" "$@"
+  RESTART=""
+  for n in "$@"; do start_one "$n" || die "$n is upgraded but did not start: run start $n, or rollback $n"; done
   ok "upgraded to $v: $*  (rollback: ./runner-vm.sh rollback $*)"
 }
 
 cmd_rollback() {
-  local n d
+  local n
   [ $# -ge 1 ] || die "usage: rollback <name>..."
   for n in "$@"; do tart_has "$n-prev" || die "$n-prev not found: nothing to roll back to"; done
+  sudo_ok || die "rollback stops and starts the runner services and needs sudo"
   lock; start_log rollback
   for n in "$@"; do
-    d=$(runner_dir "$n")
     stop_one "$n"
-    tart delete "$n"; tart rename "$n-prev" "$n"
-    [ -f "$d/run.sh.prev" ] && mv "$d/run.sh.prev" "$d/run.sh"
-    start_one "$n"
+    roll_back "$n"
+    start_one "$n" || die "$n is rolled back but did not start: run start $n"
     ok "$n rolled back"
   done
 }
@@ -840,7 +933,7 @@ cmd_doctor() {
   [ "$(uname -m)" = arm64 ] || echo "FAIL Apple silicon is required"
   for v in tart pigz jq ssh curl openssl; do command -v $v >/dev/null 2>&1 || echo "FAIL $v missing"; done
   brew info appcircleio/cli/tart >/dev/null 2>&1 || echo "WARN tart should come from the appcircleio/cli tap"
-  [ "$(free_gb)" -ge 150 ] || echo "WARN under 150 GB free: an image upgrade needs about 150 GB with --stream, 290 GB without"
+  [ "$(free_gb)" -ge 190 ] || echo "WARN under 190 GB free: a new image (261102: 137 GB of archives) needs about 190 GB with --stream, 330 GB without"
   pmset -g | awk '$1=="sleep" && $2!=0 {print "WARN the host sleeps (sudo pmset -a sleep 0)"}'
   [ -f "$CFG/host.env" ] && echo "OK   folder $CFG" || echo "INFO no folder yet: capture (upgrade) or write host.env (first install)"
   echo "For a full host check: curl -fsSL $CDN_BASE/check-runner-host.sh | bash"

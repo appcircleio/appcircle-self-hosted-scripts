@@ -108,6 +108,58 @@ testGuestScriptsAreValidZsh() {
   assertEquals "guest_collect" "0" "$?"
 }
 
+# A stub tart that keeps its VMs as empty files, to test the renames of an upgrade and a rollback.
+tart() {
+  case $1 in
+    list) echo "Source Name"; for f in "$TART_DIR"/*; do [ -f "$f" ] && echo "local $(basename "$f")"; done ;;
+    rename) mv "$TART_DIR/$2" "$TART_DIR/$3" ;;
+    delete) rm "$TART_DIR/$2" ;;
+    stop) return 0 ;;
+  esac
+}
+runsh_cache() { echo "$workDir/run-$1.sh"; }
+
+setUpSwitch() {
+  TART_DIR="$workDir/tart"; RUNNERS_ROOT="$workDir/runners"
+  rm -rf "$TART_DIR" "$RUNNERS_ROOT"; mkdir -p "$TART_DIR" "$RUNNERS_ROOT/runner1"
+  echo old >"$RUNNERS_ROOT/runner1/run.sh"; echo new >"$workDir/run-1.11.0.sh"
+  touch "$TART_DIR/runner1" "$RUNNERS_ROOT/runner1/.stopped"
+}
+
+testSwitchInKeepsThePreviousVmAndRunSh() {
+  setUpSwitch
+  echo built >"$TART_DIR/runner1-new"
+  touch "$TART_DIR/runner1-prev"   # an older rollback copy is replaced
+  switch_in runner1 1.11.0
+  assertEquals "the new VM has the runner name" "built" "$(cat "$TART_DIR/runner1")"
+  assertTrue "the previous VM is kept" "[ -f '$TART_DIR/runner1-prev' ]"
+  assertFalse "no -new VM is left" "[ -e '$TART_DIR/runner1-new' ]"
+  assertEquals "new" "$(cat "$RUNNERS_ROOT/runner1/run.sh")"
+  assertEquals "old" "$(cat "$RUNNERS_ROOT/runner1/run.sh.prev")"
+  assertFalse "the stop marker is cleared" "[ -e '$RUNNERS_ROOT/runner1/.stopped' ]"
+}
+
+testSwitchInForANewRunner() {
+  setUpSwitch
+  rm "$TART_DIR/runner1"; touch "$TART_DIR/runner2-new"
+  switch_in runner2 1.11.0
+  assertTrue "[ -f '$TART_DIR/runner2' ]"
+  assertFalse "nothing to keep" "[ -e '$TART_DIR/runner2-prev' ]"
+  assertEquals "new" "$(cat "$RUNNERS_ROOT/runner2/run.sh")"
+}
+
+testRollBackRestoresVmAndRunSh() {
+  setUpSwitch
+  echo built >"$TART_DIR/runner1-new"
+  switch_in runner1 1.11.0
+  roll_back runner1
+  assertEquals "the previous VM is back" "" "$(cat "$TART_DIR/runner1")"
+  assertFalse "[ -e '$TART_DIR/runner1-prev' ]"
+  assertEquals "old" "$(cat "$RUNNERS_ROOT/runner1/run.sh")"
+  ( roll_back runner1 >/dev/null 2>&1 )
+  assertNotEquals "a second rollback has nothing to go back to" "0" "$?"
+}
+
 testUnknownImageIsRefused() {
   ( cmd_pull 999999 >/dev/null 2>&1 )
   assertNotEquals "0" "$?"
