@@ -189,16 +189,17 @@ halt() {
 
 # ------------------------------------------------------------------ images
 cmd_images() {
-  local v guest host runsh xcodes state
-  printf '%-8s %-16s %-14s %-8s %-10s %s\n' IMAGE "GUEST MACOS" "HOST MACOS" RUN.SH STATE "XCODE (BUILD)"
+  local v guest host runsh xcodes state need
+  printf 'Current host macOS: %s, %s GB free\n\n' "$(sw_vers -productVersion)" "$(free_gb)"
+  printf '%-8s %-16s %-16s %-8s %-16s %s\n' IMAGE "GUEST MACOS" "REQUIRED HOST" RUN.SH STATE "XCODE (BUILD)"
   printf '%s\n' "$CATALOG" | while IFS='|' read -r v guest host runsh xcodes; do
-    state="-"
+    if [ "$host" = 26 ]; then need="Tahoe 26+"; else need="Sequoia 15+"; fi
+    state="available"
+    [ "$(host_major)" -lt "$host" ] && state="host too old"
     tart_has "macOS_$v" && state="installed"
-    if [ "$host" = 26 ]; then host="Tahoe+"; else host="Sequoia+"; fi
-    printf '%-8s %-16s %-14s %-8s %-10s %s\n' "$v" "$guest" "$host" "$runsh" "$state" "$xcodes"
+    printf '%-8s %-16s %-16s %-8s %-16s %s\n' "$v" "$guest" "$need" "$runsh" "$state" "$xcodes"
   done
-  printf '\nThis host: macOS %s, %s GB free. Images not listed: see the runner VM setup page.\n' \
-    "$(sw_vers -productVersion)" "$(free_gb)"
+  printf '\nImages not listed: see the runner VM setup page.\n'
 }
 
 expected_md5() {  # expected_md5 <file>: from <file>.md5, or the ETag at the default location
