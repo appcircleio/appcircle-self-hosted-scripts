@@ -901,15 +901,18 @@ cmd_rollback() {
 
 cmd_init() {  # first install: the folder with a commented host.env to fill in
   [ -f "$CFG/host.env" ] && die "$CFG/host.env exists already"
+  # Two runners share the host (Tart runs two VMs at most): each gets half of its cores and memory.
+  local cores mem
+  cores=$(sysctl -n hw.ncpu); mem=$(( $(sysctl -n hw.memsize) / 1073741824 ))
   mkdir -p "$CFG"/{runners,certs,files,scripts} && chmod 700 "$CFG"
   cat >"$CFG/host.env" <<'EOF'
 # Runner host settings. KEY=VALUE, one per line; quotes are optional. Read by runner-vm.sh, never executed.
 # Your Appcircle server (build API URL and Redis endpoint, as in the runner setup docs):
 AC_BASE_API_URL=https://api.appcircle.example.com/build/v1
 AC_REDIS_STREAM_ENDPOINT=redis.appcircle.example.com:443,ssl=true
-# Each runner VM. The host's memory and cores are shared by all runners on it.
-VM_CPU=4
-VM_MEMORY_MB=8192
+# Each runner VM: set by init for two runners on this host. With one runner, double them.
+VM_CPU=__CPU__
+VM_MEMORY_MB=__MEM__
 # Your NTP server, when the VMs cannot reach Apple's (leave empty otherwise):
 NTP_SERVER=
 # Corporate proxy, when the VMs reach the internet only through it. With PROXY_USER set, a local
@@ -919,11 +922,12 @@ PROXY_USER=
 PROXY_PASSWORD=
 NO_PROXY=localhost,127.0.0.1
 EOF
+  sed -i '' "s/__CPU__/$((cores / 2))/; s/__MEM__/$((mem / 2 * 1024))/" "$CFG/host.env"
   printf '# One host[:port] per line: every host the builds reach over HTTPS (Appcircle API, Redis, Git, proxy, mirrors).\n' >"$CFG/trust-urls.txt"
   printf '# brew <formula>   or   url <https URL> <sha256> <install dir, or file path for a single binary>\n' >"$CFG/tools.txt"
   printf '# sdkmanager package ids, one per line, for packages the image does not have\n' >"$CFG/android-sdk.txt"
   chmod -R go-rwx "$CFG"
-  ok "created $CFG"
+  ok "created $CFG (VM size for two runners on this $cores-core, $mem GB host: $((cores / 2)) cores, $((mem / 2)) GB each)"
   log "next: edit host.env, put your private root CAs (.pem) in certs/ and your hosts in trust-urls.txt, then:"
   log "  ./runner-vm.sh install <image> <pool> <name>...   (./runner-vm.sh images lists the images)"
 }

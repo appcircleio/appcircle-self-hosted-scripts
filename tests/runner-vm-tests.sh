@@ -94,7 +94,8 @@ testInitWritesATemplateOnce() {
   assertTrue "host.env" "[ -f '$cfg/host.env' ]"
   assertEquals "700" "$(stat -f '%Lp' "$cfg")"
   assertEquals "600" "$(stat -f '%Lp' "$cfg/host.env")"
-  assertEquals "4" "$(CFG="$cfg" env_get VM_CPU)"
+  assertEquals "half of the cores" "$(( $(sysctl -n hw.ncpu) / 2 ))" "$(CFG="$cfg" env_get VM_CPU)"
+  assertEquals "half of the memory" "$(( $(sysctl -n hw.memsize) / 1073741824 / 2 * 1024 ))" "$(CFG="$cfg" env_get VM_MEMORY_MB)"
   ( CFG="$cfg" cmd_init >/dev/null 2>&1 )
   assertNotEquals "a second init refuses to overwrite" "0" "$?"
 }
