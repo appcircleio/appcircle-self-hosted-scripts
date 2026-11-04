@@ -4,7 +4,7 @@ set -eou pipefail
 credJsonPath="./cred.json"
 gcloudAccessToken=""
 userId=""
-version="0.1.5"
+version="0.1.6"
 preferedPackageVersion=""
 
 # Google OAuth 2.0 token endpoints.
@@ -35,11 +35,15 @@ check_env_variables() {
   preferedPackageVersion="${AC_SERVER_VERSION:-}"
 }
 
+# An exact version (X.Y.Z) becomes a pattern that matches both package names,
+# "-X.Y.Z-<build>.zip" and "-X.Y.Z.zip", but never a longer version (3.34.1
+# must not match 3.34.10). A shorter prefix (X.Y) is left as is and matches the
+# latest X.Y.* package.
 suffix_version_option() {
   if [[ -n "${preferedPackageVersion}" ]]; then
     dotCount=$(echo "$preferedPackageVersion" | grep -o "\." | wc -l)
     if [[ "${dotCount}" -gt 1 ]]; then
-      preferedPackageVersion="${preferedPackageVersion}-"
+      preferedPackageVersion="-${preferedPackageVersion}(-|\.zip)"
     fi
   fi
 }
@@ -157,7 +161,7 @@ authenticate_gcs() {
 download_appcircle_server_package() {
   if [[ -n "$preferedPackageVersion" ]]; then
     set +e
-    foundedAppcircleServerPackage=$(echo "$listOfAppcirclePackages" | reverse_lines | grep -m 1 "$preferedPackageVersion")
+    foundedAppcircleServerPackage=$(echo "$listOfAppcirclePackages" | reverse_lines | grep -E -m 1 -e "$preferedPackageVersion")
     set -e
     if [[ -z "${foundedAppcircleServerPackage}" ]]; then
       echo "No Appcircle server version was found for the preferred version."
