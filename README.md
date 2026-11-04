@@ -98,6 +98,39 @@ interception, egress reachability, Tart and VM images, and runner supervision.
 
 Run it before opening a support ticket about a runner that will not start.
 
+### `runner-vm.sh`
+
+One tool for a macOS host that runs Appcircle runners as Tart VMs: list the
+runner images and their Xcode versions, download an image, build ready runner
+VMs, register them, run them as launchd services (through `runner-service.sh`),
+upgrade them to a new image and roll back.
+
+Every customization of the runner VMs lives in one folder on the host
+(`~/appcircle-runner-config`): server settings, VM size, NTP, corporate proxy,
+root certificates and the hosts to trust, files for the VM home, tools to
+install, Android SDK packages, scripts and the runner registrations. A new
+image is never changed by hand: `create` and `upgrade` build the VMs from the
+image plus that folder, the same way on a first install and on every upgrade.
+One name per runner: the runner name on the server is also the Tart VM name,
+the runner folder (`~/<name>`) and `runners/<name>/` in the folder.
+
+```bash
+./runner-vm.sh images                              # images and their Xcode versions
+./runner-vm.sh init                                # first install: folder and host.env
+./runner-vm.sh install 261102 <pool> runner1 runner2   # token on stdin
+./runner-vm.sh capture vm01 macOS_260723           # existing host: read a VM into the folder once
+./runner-vm.sh upgrade 261102                      # stop, rebuild from image + folder, start
+./runner-vm.sh rollback runner1 runner2
+./runner-vm.sh status
+```
+
+Each image is paired with its `run.sh` in the `CATALOG` at the top of the
+script: add the line with every image release, together with the `run.sh` it
+ships with. `host.env` is read as `KEY=VALUE` lines and never sourced. With a
+proxy user in `host.env` a local tinyproxy in each VM holds the credentials,
+because `sdkmanager` and Gradle cannot take proxy credentials from
+`HTTPS_PROXY`. `./tests/runner-vm-tests.sh` covers the parts that need no VM.
+
 ## Publishing
 
 The scripts are served to customers from `https://cdn.appcircle.io/self-hosted/`
@@ -112,6 +145,7 @@ Keep it accurate.
 | `run.sh` | `https://storage.googleapis.com/appcircle-dev-common/self-hosted/run-<VERSION>.sh` (the URL the macOS VM setup page downloads) |
 | `runner-service.sh` | `https://cdn.appcircle.io/self-hosted/runner-service.sh` |
 | `check-runner-host.sh` | `https://cdn.appcircle.io/self-hosted/check-runner-host.sh` |
+| `runner-vm.sh` | `https://cdn.appcircle.io/self-hosted/runner-vm.sh` |
 | `download-server.sh` | `https://cdn.appcircle.io/self-hosted/download-server.sh` |
 
 `download-server.sh` is the script the server installation and update docs run
