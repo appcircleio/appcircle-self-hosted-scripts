@@ -101,26 +101,31 @@ Run it before opening a support ticket about a runner that will not start.
 ## Publishing
 
 The scripts are served to customers from `https://cdn.appcircle.io/self-hosted/`
-and the documentation links to that URL. Publishing is manual, so the mapping
-below is the only record of which repository file becomes which public file.
-Keep it accurate.
+(`gs://appcircle-prod-common/self-hosted/`) and the documentation links to that
+URL. The `Jenkinsfile` publishes them on every push to `main`; a manual run of
+the `main` job does the same. Other branches and pull requests run only the
+checks (`bash -n`, ShellCheck, the offline tests). `develop` is the working
+branch, and merging it into `main` is the release.
 
-| Repository file | Published as |
-| --- | --- |
-| `download-runner.sh` | `https://cdn.appcircle.io/self-hosted/download-runner.sh`, and the same file as `download-runner-beta.sh` while older docs and customer automation still use that name |
-| `harden-host.sh` | `https://cdn.appcircle.io/self-hosted/harden-macos-host.sh` |
-| `run.sh` | `https://storage.googleapis.com/appcircle-dev-common/self-hosted/run-<VERSION>.sh` (the URL the macOS VM setup page downloads) |
-| `runner-service.sh` | `https://cdn.appcircle.io/self-hosted/runner-service.sh` |
-| `check-runner-host.sh` | `https://cdn.appcircle.io/self-hosted/check-runner-host.sh` |
-| `download-server.sh` | `https://cdn.appcircle.io/self-hosted/download-server.sh` |
+[`ci/publish.map`](ci/publish.map) is the only record of which repository file
+becomes which public file. Keep it accurate. For each entry the pipeline:
+
+- uploads the file with a `<name>.md5` file next to it (`md5sum` format), and skips it when the bucket already has the same content;
+- fails instead of overwriting a versioned name (`run-<VERSION>.sh`) that already exists with different content;
+- downloads every published name and its `.md5` file from the origin and compares the MD5 with the repository file, then runs `download-server.sh` and `download-runner.sh` through `curl ... | bash`.
+
+Mutable names get `Cache-Control: public, max-age=300`, versioned names `max-age=3600`.
+Google's edge cache cannot be purged, so an old copy can be served until its max-age expires.
+
+`run.sh` was earlier published to `gs://appcircle-dev-common/self-hosted/`, the
+URL the macOS VM setup page still downloads from.
 
 `download-server.sh` is the script the server installation and update docs run
 with `curl ... | bash`. It must keep working with the stock tools of Linux and
 macOS (no `grep -P`, no `tac`, bash 3.2 syntax); `./tests/download-server-tests.sh`
 checks that on both.
 
-Two of these rows are renames rather than plain copies, and nothing enforces
-either one, so verify the published URL after every upload.
+Two of the mapping entries are renames rather than plain copies.
 
 `harden-host.sh` is published under a different name than it has here. This was
 recorded nowhere before, and `cdn.appcircle.io/self-hosted/harden-host.sh`
